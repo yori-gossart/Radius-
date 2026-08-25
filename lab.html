@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10151B">
+<title>Radius Lab — simulateur illustratif</title>
+<style>
+:root{
+  --bg:#10151B; --surface:#151C25; --panel:#19202A; --edge:#29323E;
+  --ink:#E8EDF3; --mute:#8494AB; --faint:#5D6B80;
+  /* Palette catégorielle validée (pas de sens « bon / mauvais » : identité seule) */
+  --s1:#3987E5;  /* Sans GPS      */
+  --s2:#D95926;  /* GPS           */
+  --s3:#199E70;  /* GPS + Radius  */
+  --warn:#FFB43A;
+  --disp:'IBM Plex Sans Condensed',system-ui,-apple-system,sans-serif;
+  --body:system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);
+  font-size:16px;line-height:1.5}
+body{padding:0 0 max(32px,env(safe-area-inset-bottom))}
+.wrap{max-width:560px;margin:0 auto;padding:0 16px}
+
+header{padding:22px 0 14px}
+.badge{display:inline-block;font-family:var(--mono);font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:#0C1218;background:var(--warn);
+  padding:4px 9px;border-radius:5px;font-weight:700}
+h1{font-family:var(--disp);font-weight:700;font-size:26px;letter-spacing:-.01em;
+  margin:11px 0 6px;line-height:1.15}
+.sub{color:var(--mute);font-size:14px;margin:0}
+
+.avert{border:1px solid rgba(255,180,58,.34);background:rgba(255,180,58,.07);
+  border-radius:10px;padding:13px 15px;margin:16px 0 22px;font-size:13.5px;
+  line-height:1.55;color:var(--ink)}
+.avert b{color:var(--warn)}
+
+h2{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--mute);font-weight:400;margin:26px 0 12px;
+  padding-top:18px;border-top:1px solid var(--edge)}
+
+.presets{display:grid;grid-template-columns:1fr;gap:8px}
+.presets button{text-align:left;padding:12px 14px;line-height:1.35}
+.presets button strong{display:block;font-family:var(--disp);font-size:15px;font-weight:600}
+.presets button span{font-size:12.5px;color:var(--mute)}
+.presets button[aria-pressed="true"]{border-color:var(--s1);background:rgba(57,135,229,.11)}
+
+button{font-family:var(--body);font-size:15px;border:1px solid var(--edge);border-radius:9px;
+  background:var(--panel);color:var(--ink);padding:12px;cursor:pointer;width:100%}
+button:active{opacity:.7}
+button:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+button.primary{background:var(--s1);border-color:var(--s1);color:#06111F;font-weight:650;
+  font-family:var(--disp);font-size:16px;padding:15px}
+
+.seedrow{display:flex;gap:8px;align-items:stretch;margin-bottom:10px}
+.seedrow input{flex:1;min-width:0;background:var(--surface);border:1px solid var(--edge);
+  color:var(--ink);font-family:var(--mono);font-size:15px;padding:12px;border-radius:9px}
+.seedrow button{width:auto;flex:none;padding:12px 14px;font-family:var(--mono);font-size:13px}
+input:focus{outline:none;border-color:var(--s1)}
+
+.sl{margin-bottom:17px}
+.sl .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:7px}
+.sl label{font-size:13.5px;color:var(--ink);line-height:1.3}
+.sl output{font-family:var(--mono);font-size:13px;color:var(--s1);white-space:nowrap;flex:none}
+.sl .hint{font-size:11.5px;color:var(--faint);margin-top:5px;line-height:1.4}
+input[type=range]{width:100%;-webkit-appearance:none;appearance:none;background:transparent;
+  height:26px;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--edge)}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--edge)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;
+  border-radius:50%;background:var(--s1);border:3px solid var(--bg);margin-top:-9px}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;
+  background:var(--s1);border:3px solid var(--bg)}
+input[type=range]:focus-visible{outline:2px solid var(--s1);outline-offset:4px}
+
+/* ---- tableau des résultats ----
+   Six colonnes ne tiennent pas sur un téléphone : le tableau défile dans son
+   propre cadre plutôt que d'élargir toute la page. */
+.tblwrap{overflow-x:auto;margin:0 -16px;padding:0 16px 2px}
+.tbl{width:100%;min-width:496px;border-collapse:collapse;font-size:13.5px}
+.tbl td:first-child,.tbl th:first-child{white-space:nowrap}
+.scrollhint{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);margin:7px 0 0}
+.tbl th,.tbl td{padding:9px 6px;text-align:right;border-bottom:1px solid var(--edge)}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl thead th{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--mute);font-weight:400;vertical-align:bottom;line-height:1.3}
+.tbl td{font-family:var(--mono);color:var(--ink)}
+.tbl td:first-child{font-family:var(--body);color:var(--mute)}
+.swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;
+  vertical-align:baseline}
+
+/* ---- barres ---- */
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-bottom:18px;font-size:12.5px;
+  color:var(--mute)}
+.metric{margin-bottom:22px}
+.metric h3{font-family:var(--body);font-size:13.5px;font-weight:600;color:var(--ink);
+  margin:0 0 2px}
+.metric .unit{font-family:var(--mono);font-size:11px;color:var(--faint);
+  display:block;margin-bottom:11px}
+.brow{margin-bottom:9px}
+.bhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+  font-size:12.5px;margin-bottom:4px}
+.bhead .nm{color:var(--mute)}
+.bhead .vl{font-family:var(--mono);color:var(--ink);flex:none}
+.btrack{height:12px;background:var(--surface);border-radius:3px;overflow:hidden}
+.bfill{height:100%;border-radius:0 4px 4px 0;min-width:2px;transition:width .25s ease}
+@media (prefers-reduced-motion:reduce){.bfill{transition:none}}
+
+/* ---- verdict ---- */
+.cmp{background:var(--panel);border:1px solid var(--edge);border-radius:11px;
+  padding:16px;margin-bottom:14px}
+.cmp .row{display:flex;justify-content:space-between;gap:12px;padding:8px 0;
+  border-bottom:1px solid var(--edge);font-size:13.5px}
+.cmp .row:last-of-type{border-bottom:none}
+.cmp .row span:first-child{color:var(--mute)}
+.cmp .row span:last-child{font-family:var(--mono);text-align:right}
+.verdict{border-radius:10px;padding:15px;margin-top:13px;text-align:center;
+  border:1px solid var(--edge)}
+.verdict .k{font-family:var(--mono);font-size:10px;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--mute);margin-bottom:5px}
+.verdict .v{font-family:var(--disp);font-size:20px;font-weight:700}
+.verdict.fort{border-color:rgba(25,158,112,.5);background:rgba(25,158,112,.1)}
+.verdict.fort .v{color:var(--s3)}
+.verdict.faible{border-color:rgba(255,180,58,.45);background:rgba(255,180,58,.08)}
+.verdict.faible .v{color:var(--warn)}
+.verdict.aucun{border-color:var(--edge);background:var(--surface)}
+.verdict.aucun .v{color:var(--mute)}
+.verdict small{display:block;margin-top:7px;font-family:var(--body);font-size:12px;
+  color:var(--mute);line-height:1.45}
+
+details{border-top:1px solid var(--edge);padding-top:14px;margin-top:24px}
+summary{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--mute);cursor:pointer;padding:4px 0}
+details p,details li{font-size:13px;color:var(--mute);line-height:1.6}
+details h4{font-size:13.5px;color:var(--ink);margin:16px 0 6px;font-weight:600}
+details code{font-family:var(--mono);font-size:12px;color:var(--ink);
+  background:var(--surface);padding:1px 5px;border-radius:4px}
+details ul{padding-left:19px;margin:6px 0}
+footer{margin-top:26px;padding-top:16px;border-top:1px solid var(--edge);
+  font-family:var(--mono);font-size:10.5px;color:var(--faint);line-height:1.7}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="badge">Simulation illustrative</span>
+  <h1>Radius Lab</h1>
+  <p class="sub">Comparer trois conducteurs face à l'éblouissement, sur des milliers
+    de trajets tirés au sort.</p>
+</header>
+
+<div class="avert">
+  <b>Radius Lab est un outil exploratoire.</b> Les paramètres comportementaux sont
+  hypothétiques tant qu'ils ne sont pas calibrés sur des études ou données réelles.
+</div>
+
+<h2>Scénario environnemental</h2>
+<div class="presets" id="presets"></div>
+
+<h2>Graine aléatoire</h2>
+<div class="seedrow">
+  <input id="seed" value="radius-01" spellcheck="false" aria-label="Graine du générateur">
+  <button id="reseed" type="button">Changer</button>
+</div>
+<p class="sl hint" style="margin:0 0 4px">Une même graine, avec les mêmes réglages,
+  reproduit exactement le même tirage.</p>
+
+<h2>Paramètres</h2>
+<div id="sliders"></div>
+
+<button class="primary" id="run" type="button">Lancer la simulation</button>
+
+<h2>Résultats par groupe</h2>
+<div class="tblwrap"><table class="tbl">
+  <thead><tr>
+    <th>Groupe</th><th>Exposition<br>moy. (min)</th><th>Épisodes<br>forts subis</th>
+    <th>Temps<br>ajouté (min)</th><th>Alertes<br>moy.</th><th>Reco.<br>acceptées</th>
+  </tr></thead>
+  <tbody id="tbody"></tbody>
+</table></div>
+<p class="scrollhint">Tableau défilable horizontalement →</p>
+
+<h2>Comparaison visuelle</h2>
+<div class="legend" id="legend"></div>
+<div id="charts"></div>
+
+<h2>Radius face au GPS seul</h2>
+<div class="cmp" id="cmp"></div>
+
+<details>
+  <summary>Le modèle, et ce qu'il invente</summary>
+  <div id="modele"></div>
+</details>
+
+<footer>
+  Radius Lab — simulation illustrative, sans valeur probante.<br>
+  Aucune donnée n'est envoyée ni conservée. Prototype séparé de Radius.
+</footer>
+
+</div>
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════════
+   1. ALÉA REPRODUCTIBLE
+   Un même couple (graine, réglages) doit redonner exactement le
+   même tirage : sans ça, comparer deux jeux de paramètres revient
+   à comparer deux bruits différents.
+   ═══════════════════════════════════════════════════════════ */
+function graineVersEntier(txt) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < txt.length; i++) {
+    h ^= txt.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+
+function mulberry32(a) {
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Durée positive et asymétrique : quelques épisodes très longs, beaucoup de
+    courts. Une loi normale donnerait des durées négatives. */
+function dureeTiree(rnd, moyenne, dispersion) {
+  const u = Math.max(1e-9, rnd()), v = Math.max(1e-9, rnd());
+  const normal = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  const facteur = Math.exp(normal * dispersion - (dispersion * dispersion) / 2);
+  return Math.max(0.2, moyenne * facteur);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   2. CONSTANTES DU MODÈLE
+   Toutes arbitraires. Elles sont ici, nommées et groupées,
+   précisément pour être remplacées par des mesures un jour.
+   ═══════════════════════════════════════════════════════════ */
+const M = {
+  // Répartition des intensités, sachant qu'un épisode a lieu.
+  pFaible: 0.45, pModeree: 0.35, pForte: 0.20,
+  // Un trajet peut porter plusieurs épisodes.
+  pDeuxieme: 0.30, pTroisieme: 0.10,
+  // Dispersion de la durée (log-normale).
+  dispersion: 0.55,
+  // Minutes perdues faute d'itinéraire optimisé, quand on ne suit pas de GPS.
+  penaliteSansGPS: 5,
+  // Coût moyen d'un contournement proposé par Radius (tirage 0 à 2×).
+  coutRecoMoyen: 2.5,
+  // Radius ne parle qu'à partir de « modéré » — c'est la règle du produit réel.
+  alerteDesModere: true,
+  // Seuils du verdict illustratif.
+  seuilAucun: 5, seuilFort: 25, coutFort: 1.0,
+};
+
+const GROUPES = [
+  { cle: 'sans',   nom: 'Sans GPS',     couleur: 'var(--s1)' },
+  { cle: 'gps',    nom: 'GPS',          couleur: 'var(--s2)' },
+  { cle: 'radius', nom: 'GPS + Radius', couleur: 'var(--s3)' },
+];
+
+/* ═══════════════════════════════════════════════════════════
+   3. LE TIRAGE
+   ═══════════════════════════════════════════════════════════ */
+function vide() {
+  return { expo: 0, forts: 0, temps: 0, alertes: 0, proposees: 0, acceptees: 0 };
+}
+
+function simuler(p) {
+  const rnd = mulberry32(graineVersEntier(p.graine));
+  const acc = { sans: vide(), gps: vide(), radius: vide() };
+
+  for (let i = 0; i < p.n; i++) {
+    // ---- le trajet, identique pour les trois conducteurs ----
+    const episodes = [];
+    if (rnd() < p.pGlare) {
+      let k = 1;
+      if (rnd() < M.pDeuxieme) k++;
+      if (rnd() < M.pTroisieme) k++;
+      for (let j = 0; j < k; j++) {
+        const u = rnd();
+        const intensite = u < M.pFaible ? 'faible'
+                        : u < M.pFaible + M.pModeree ? 'moderee' : 'forte';
+        episodes.push({ intensite, duree: dureeTiree(rnd, p.dureeMoy, M.dispersion) });
+      }
+    }
+    const bruitETA = (rnd() * 2 - 1) * p.etaVar;
+    const suitGPS = rnd() < p.pObey;
+
+    const expoTotale = episodes.reduce((s, e) => s + e.duree, 0);
+    const forts = episodes.filter((e) => e.intensite === 'forte').length;
+
+    // ---- 1. sans GPS : aucune anticipation, ni du trafic ni du soleil ----
+    acc.sans.expo += expoTotale;
+    acc.sans.forts += forts;
+    acc.sans.temps += M.penaliteSansGPS + Math.abs(bruitETA);
+
+    // ---- 2. GPS : trajet optimisé, exposition solaire inchangée ----
+    // Ne pas suivre le GPS revient à perdre l'essentiel de son bénéfice.
+    const tempsGPS = suitGPS ? Math.max(0, bruitETA * 0.5)
+                             : M.penaliteSansGPS * 0.6 + Math.abs(bruitETA);
+    acc.gps.expo += expoTotale;
+    acc.gps.forts += forts;
+    acc.gps.temps += tempsGPS;
+
+    // ---- 3. GPS + Radius : même trajet, plus des recommandations ----
+    let expoR = 0, fortsR = 0, tempsR = tempsGPS, alertesR = 0;
+    for (const e of episodes) {
+      const annonçable = !M.alerteDesModere || e.intensite !== 'faible';
+      let evite = 0, protege = false;
+
+      if (annonçable && alertesR < p.maxAlertes) {
+        alertesR++;
+        acc.radius.proposees++;
+        const cout = rnd() * 2 * M.coutRecoMoyen;
+        // Deux refus possibles : le détour coûte trop cher, ou le conducteur
+        // ne suit pas la recommandation.
+        const abordable = cout <= p.minAcceptables;
+        const accepte = abordable && rnd() < p.pAccept;
+        if (accepte) {
+          acc.radius.acceptees++;
+          evite = e.duree * p.efficacite;
+          tempsR += cout;
+          protege = true;
+        }
+      }
+      expoR += e.duree - evite;
+      if (e.intensite === 'forte' && !protege) fortsR++;
+    }
+    acc.radius.expo += expoR;
+    acc.radius.forts += fortsR;
+    acc.radius.temps += tempsR;
+    acc.radius.alertes += alertesR;
+  }
+
+  const par = {};
+  for (const g of GROUPES) {
+    const a = acc[g.cle];
+    par[g.cle] = {
+      expo: a.expo / p.n,
+      forts: a.forts / p.n,
+      temps: a.temps / p.n,
+      alertes: a.alertes / p.n,
+      tauxAccept: a.proposees ? a.acceptees / a.proposees : null,
+    };
+  }
+
+  const reduction = par.gps.expo - par.radius.expo;
+  const reductionPct = par.gps.expo > 0 ? (reduction / par.gps.expo) * 100 : 0;
+  const surcout = par.radius.temps - par.gps.temps;
+  const coutParMinute = reduction > 1e-9 ? surcout / reduction : null;
+
+  let verdict = 'aucun';
+  if (reductionPct >= M.seuilFort && coutParMinute !== null && coutParMinute <= M.coutFort) {
+    verdict = 'fort';
+  } else if (reductionPct >= M.seuilAucun) {
+    verdict = 'faible';
+  }
+
+  return { par, reduction, reductionPct, surcout, coutParMinute, verdict };
+}
+
+/* ═══════════════════════════════════════════════════════════
+   4. RÉGLAGES
+   ═══════════════════════════════════════════════════════════ */
+const REGLAGES = [
+  { cle:'n', nom:'Nombre de conducteurs', min:100, max:10000, pas:100, val:2000,
+    fmt:(v)=>v.toLocaleString('fr-FR'), aide:'Un trajet par conducteur.' },
+  { cle:'pGlare', nom:'Probabilité d’éblouissement', min:0, max:100, pas:1, val:40,
+    pct:true, fmt:(v)=>v+' %', aide:'Part des trajets portant au moins un épisode.' },
+  { cle:'dureeMoy', nom:'Durée moyenne d’exposition', min:0.5, max:15, pas:.5, val:4,
+    fmt:(v)=>v.toFixed(1).replace('.',',')+' min', aide:'Par épisode, pas par trajet.' },
+  { cle:'etaVar', nom:'Variabilité de l’ETA', min:0, max:20, pas:1, val:4,
+    fmt:(v)=>'± '+v+' min', aide:'Incertitude sur la durée du trajet.' },
+  { cle:'pObey', nom:'Probabilité d’obéir au GPS', min:0, max:100, pas:1, val:80,
+    pct:true, fmt:(v)=>v+' %', aide:'Sinon le bénéfice d’itinéraire est en grande partie perdu.' },
+  { cle:'pAccept', nom:'Probabilité d’accepter Radius', min:0, max:100, pas:1, val:55,
+    pct:true, fmt:(v)=>v+' %', aide:'Sachant qu’une recommandation abordable a été faite.' },
+  { cle:'efficacite', nom:'Efficacité d’une alerte Radius', min:0, max:100, pas:1, val:60,
+    pct:true, fmt:(v)=>v+' %', aide:'Part de l’exposition évitée quand la reco est suivie.' },
+  { cle:'minAcceptables', nom:'Minutes supplémentaires acceptables', min:0, max:15, pas:.5, val:4,
+    fmt:(v)=>v.toFixed(1).replace('.',',')+' min', aide:'Au-delà, le conducteur refuse le détour.' },
+  { cle:'maxAlertes', nom:'Nombre maximum d’alertes', min:0, max:8, pas:1, val:4,
+    fmt:(v)=>v+(v>1?' alertes':' alerte'), aide:'Par trajet. Radius réel en autorise quatre.' },
+];
+
+const PRESETS = [
+  { nom:'Trajet urbain', desc:'Immeubles, arrêts fréquents, horaires peu fiables',
+    set:{ pGlare:22, dureeMoy:1.5, etaVar:8 } },
+  { nom:'Route côtière au coucher du soleil', desc:'Horizon dégagé, soleil dans l’axe, trafic régulier',
+    set:{ pGlare:65, dureeMoy:7, etaVar:2 } },
+  { nom:'Long trajet autoroutier', desc:'Longues lignes droites, vitesse élevée',
+    set:{ pGlare:40, dureeMoy:5, etaVar:4 } },
+];
+
+/* ═══════════════════════════════════════════════════════════
+   5. INTERFACE
+   ═══════════════════════════════════════════════════════════ */
+const $ = (id) => document.getElementById(id);
+const n1 = (v) => v.toFixed(1).replace('.', ',');
+const n2 = (v) => v.toFixed(2).replace('.', ',');
+
+function lireReglages() {
+  const p = { graine: $('seed').value.trim() || 'radius' };
+  for (const r of REGLAGES) {
+    const v = parseFloat($('r_' + r.cle).value);
+    p[r.cle] = r.pct ? v / 100 : v;
+  }
+  return p;
+}
+
+(function construireSliders() {
+  $('sliders').innerHTML = REGLAGES.map((r) => `
+    <div class="sl">
+      <div class="top">
+        <label for="r_${r.cle}">${r.nom}</label>
+        <output id="o_${r.cle}"></output>
+      </div>
+      <input type="range" id="r_${r.cle}" min="${r.min}" max="${r.max}"
+             step="${r.pas}" value="${r.val}">
+      <div class="hint">${r.aide}</div>
+    </div>`).join('');
+  for (const r of REGLAGES) {
+    const el = $('r_' + r.cle);
+    const maj = () => { $('o_' + r.cle).textContent = r.fmt(parseFloat(el.value)); };
+    el.addEventListener('input', () => { maj(); lancer(); });
+    maj();
+  }
+})();
+
+(function construirePresets() {
+  $('presets').innerHTML = PRESETS.map((p, i) => `
+    <button type="button" data-i="${i}" aria-pressed="false">
+      <strong>${p.nom}</strong><span>${p.desc}</span>
+    </button>`).join('');
+  $('presets').addEventListener('click', (ev) => {
+    const b = ev.target.closest('button'); if (!b) return;
+    const p = PRESETS[+b.dataset.i];
+    for (const [cle, val] of Object.entries(p.set)) {
+      const el = $('r_' + cle);
+      el.value = val;
+      el.dispatchEvent(new Event('input'));
+    }
+    for (const autre of $('presets').querySelectorAll('button')) {
+      autre.setAttribute('aria-pressed', String(autre === b));
+    }
+  });
+})();
+
+$('reseed').onclick = () => {
+  $('seed').value = 'radius-' + Math.random().toString(36).slice(2, 8);
+  lancer();
+};
+$('seed').addEventListener('input', lancer);
+$('run').onclick = lancer;
+
+/* ---- rendu ---- */
+const METRIQUES = [
+  { cle:'expo',   nom:'Exposition moyenne',        unite:'minutes par trajet', f:n1 },
+  { cle:'forts',  nom:'Épisodes forts subis',      unite:'par trajet', f:n2 },
+  { cle:'temps',  nom:'Temps de trajet ajouté',    unite:'minutes par trajet', f:n1 },
+];
+
+function lancer() {
+  const p = lireReglages();
+  const r = simuler(p);
+
+  $('tbody').innerHTML = GROUPES.map((g) => {
+    const d = r.par[g.cle];
+    return `<tr>
+      <td><span class="swatch" style="background:${g.couleur}"></span>${g.nom}</td>
+      <td>${n1(d.expo)}</td><td>${n2(d.forts)}</td><td>${n1(d.temps)}</td>
+      <td>${d.alertes ? n2(d.alertes) : '—'}</td>
+      <td>${d.tauxAccept === null ? '—' : Math.round(d.tauxAccept * 100) + ' %'}</td>
+    </tr>`;
+  }).join('');
+
+  $('legend').innerHTML = GROUPES.map((g) =>
+    `<span><span class="swatch" style="background:${g.couleur}"></span>${g.nom}</span>`).join('');
+
+  // Une échelle par métrique : les unités diffèrent, un axe commun mentirait.
+  $('charts').innerHTML = METRIQUES.map((m) => {
+    const vals = GROUPES.map((g) => r.par[g.cle][m.cle]);
+    const max = Math.max(...vals, 1e-9);
+    const barres = GROUPES.map((g, i) => `
+      <div class="brow">
+        <div class="bhead"><span class="nm">${g.nom}</span>
+          <span class="vl">${m.f(vals[i])}</span></div>
+        <div class="btrack"><div class="bfill"
+          style="width:${(vals[i] / max * 100).toFixed(2)}%;background:${g.couleur}"></div></div>
+      </div>`).join('');
+    return `<div class="metric"><h3>${m.nom}</h3>
+      <span class="unit">${m.unite}</span>${barres}</div>`;
+  }).join('');
+
+  const libelles = { fort:'Bénéfice fort', faible:'Bénéfice faible', aucun:'Aucun bénéfice' };
+  const cout = r.coutParMinute === null ? '—'
+    : n2(r.coutParMinute) + ' min';
+  $('cmp').innerHTML = `
+    <div class="row"><span>Exposition évitée</span>
+      <span>${n1(r.reduction)} min / trajet<br>${n1(r.reductionPct)} %</span></div>
+    <div class="row"><span>Temps supplémentaire</span><span>${n1(r.surcout)} min / trajet</span></div>
+    <div class="row"><span>Coût par minute d’exposition évitée</span><span>${cout}</span></div>
+    <div class="verdict ${r.verdict}">
+      <div class="k">Verdict illustratif</div>
+      <div class="v">${libelles[r.verdict]}</div>
+      <small>Conclusion d’un modèle inventé, pas d’une mesure. Elle décrit
+        les hypothèses saisies ci-dessus, rien d’autre.</small>
+    </div>`;
+}
+
+$('modele').innerHTML = `
+  <h4>Ce que fait la simulation</h4>
+  <p>Chaque conducteur reçoit <strong>un trajet tiré au sort</strong> : présence ou non
+  d'un épisode d'éblouissement, jusqu'à trois épisodes, une intensité, une durée, un
+  bruit sur l'ETA. Le même trajet est ensuite vécu par les trois groupes, ce qui permet
+  de les comparer sans que le hasard s'en mêle.</p>
+  <ul>
+    <li><strong>Sans GPS</strong> — subit toute l'exposition et perd
+      ${M.penaliteSansGPS} minutes faute d'itinéraire optimisé.</li>
+    <li><strong>GPS</strong> — récupère ce temps s'il suit les consignes, mais son
+      exposition solaire est identique : un GPS n'anticipe pas le soleil.</li>
+    <li><strong>GPS + Radius</strong> — même trajet, plus une alerte par épisode
+      annonçable, dans la limite du nombre maximum. Si le détour proposé tient dans
+      les minutes acceptables <em>et</em> que le conducteur le suit, l'exposition de
+      cet épisode baisse selon l'efficacité, au prix de ces minutes.</li>
+  </ul>
+
+  <h4>Ce qui est inventé</h4>
+  <p>Tout ce qui suit est posé sans donnée. Ce sont des <em>hypothèses de travail</em>,
+  pas des mesures :</p>
+  <ul>
+    <li>la répartition des intensités — ${Math.round(M.pFaible*100)} % faible,
+      ${Math.round(M.pModeree*100)} % modérée, ${Math.round(M.pForte*100)} % forte ;</li>
+    <li>la forme de la loi des durées (log-normale, dispersion ${M.dispersion}) ;</li>
+    <li>la probabilité d'un deuxième (${Math.round(M.pDeuxieme*100)} %) ou d'un
+      troisième (${Math.round(M.pTroisieme*100)} %) épisode ;</li>
+    <li>les ${M.penaliteSansGPS} minutes perdues sans GPS ;</li>
+    <li>le coût moyen d'un détour (${M.coutRecoMoyen} min, tiré entre 0 et le double) ;</li>
+    <li>l'idée que Radius <strong>prédit toujours juste</strong> — aucune fausse
+      alerte, aucun épisode manqué. C'est précisément ce que la phase de terrain
+      doit vérifier, et l'hypothèse la plus généreuse du lot ;</li>
+    <li>le fait que Radius se taise en dessous de « modéré » ;</li>
+    <li>les seuils du verdict — moins de ${M.seuilAucun} % : aucun bénéfice ;
+      au moins ${M.seuilFort} % et au plus ${M.coutFort} min par minute évitée :
+      bénéfice fort ; entre les deux : faible.</li>
+  </ul>
+  <p>Les valeurs par défaut des curseurs sont, elles aussi, arbitraires.
+  <strong>Aucun chiffre produit ici ne constitue une preuve.</strong> L'outil sert à
+  voir quelles hypothèses feraient exister un bénéfice — et lesquelles le feraient
+  disparaître.</p>
+
+  <h4>Ce qui n'est délibérément pas modélisé</h4>
+  <p>Les scénarios ne changent que l'<strong>environnement</strong> : probabilité
+  d'exposition, durée, variabilité de l'ETA. Ils n'attribuent aucun comportement
+  différent aux conducteurs. Les curseurs de comportement — obéissance au GPS,
+  acceptation, tolérance au détour — restent sous votre main et s'appliquent
+  identiquement partout.</p>
+
+  <h4>Comment remplacer ces hypothèses par des mesures</h4>
+  <p>Chaque constante inventée est isolée dans l'objet <code>M</code>, en haut du
+  script, et chaque paramètre comportemental est un curseur. Aucune n'est enfouie
+  dans le calcul. Le remplacement se fait donc valeur par valeur, sans toucher au
+  modèle :</p>
+  <ul>
+    <li><strong>Probabilité et durée d'exposition</strong> — c'est ce que Radius
+      mesure déjà. Un carnet de trajets avec l'élévation solaire notée donne la
+      fréquence réelle et la distribution des durées, sur horizon dégagé.</li>
+    <li><strong>Répartition des intensités</strong> — même source : le niveau
+      annoncé confronté à la gêne réellement ressentie.</li>
+    <li><strong>Efficacité d'une alerte</strong> — demande de comparer une exposition
+      avec et sans recommandation suivie. C'est la mesure la plus coûteuse, et la
+      plus décisive.</li>
+    <li><strong>Acceptation et tolérance au détour</strong> — relèvent d'une étude
+      d'usage, pas du moteur. À défaut, la littérature sur l'observance des consignes
+      de navigation donne un ordre de grandeur.</li>
+    <li><strong>Justesse de la prédiction</strong> — la seule que le prototype
+      actuel puisse trancher seul, et celle par laquelle il faut commencer :
+      tant qu'elle n'est pas établie, tout le reste est spéculatif.</li>
+  </ul>
+  <p>Tant qu'une valeur n'est pas mesurée, la bonne façon de s'en servir est de
+  la faire varier d'un extrême à l'autre : si le verdict bascule, c'est cette
+  mesure-là qu'il faut aller chercher en premier.</p>`;
+
+lancer();
+</script>
+</body>
+</html>
