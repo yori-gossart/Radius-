@@ -107,6 +107,10 @@ button:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
 @keyframes p{0%,100%{opacity:1}50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.pulse{animation:none}*{transition:none!important}}
 
+.mode{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  border:1px solid var(--edge);border-radius:9px;padding:10px 12px;margin:0 0 14px;text-align:center}
+.mode.test{color:var(--sky);border-color:rgba(127,168,201,.45);background:rgba(127,168,201,.07)}
+.mode.reel{color:var(--amber);border-color:rgba(255,180,58,.45);background:rgba(255,180,58,.07)}
 .note{font-size:13px;color:var(--mute);line-height:1.55;margin:16px 0}
 .note strong{color:var(--ink);font-weight:600}
 .err{color:var(--burn);font-size:14px;margin:12px 0}
@@ -135,8 +139,9 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
 <section id="setup">
   <div class="field">
     <label for="from">Départ</label>
-    <input id="from" placeholder="Adresse, ou « ma position »" autocomplete="off">
+    <input id="from" placeholder="Adresse de départ" autocomplete="off">
     <ul class="suggest hide" id="sugFrom"></ul>
+    <button class="ghost mini" id="useHere" style="margin-top:9px">Utiliser ma position actuelle</button>
   </div>
   <div class="field">
     <label for="to">Arrivée</label>
@@ -187,21 +192,29 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
   <ul class="zones" id="zoneList"></ul>
 
   <div class="field">
-    <button class="go" id="start">Démarrer le suivi, puis ouvrir le GPS</button>
+    <button class="go" id="sim">Tester ce trajet — sans GPS</button>
+  </div>
+  <div class="field">
+    <button id="start">Démarrer le suivi réel</button>
   </div>
   <div class="row" style="margin-bottom:14px">
     <button class="ghost mini" id="back">Modifier</button>
-    <button class="ghost mini" id="sim">Simuler le trajet</button>
+    <button class="ghost mini" id="openMapsResult">Ouvrir Google Maps</button>
   </div>
-  <p class="note"><strong>Comment l'utiliser en vrai :</strong> appuyez sur « Démarrer le suivi »,
-    autorisez la position et les notifications, puis choisissez Waze ou Maps. L'appli reste
-    active derrière et vous prévient à l'approche de chaque zone.
-    Pour valider cette version, privilégiez Google Maps : Waze peut choisir un
-    autre itinéraire que Google Routes.</p>
+  <p class="note"><strong>Tester ce trajet</strong> rejoue le parcours en accéléré et
+    déclenche les annonces. Le GPS n'est jamais consulté : c'est le mode à utiliser
+    pour un trajet fictif, fût-il à l'autre bout du monde.<br><br>
+    <strong>Démarrer le suivi réel</strong> compare votre position au trajet analysé.
+    À n'utiliser que si vous êtes sur ce trajet-là : ailleurs l'appli affichera
+    « hors itinéraire », et ce sera exact.<br><br>
+    <strong>Google Maps</strong> reçoit exactement le départ et l'arrivée choisis ici.
+    Waze ne sait recevoir qu'une destination et partira de votre position réelle.</p>
 </section>
 
 <!-- ========== ÉCRAN 3 : SUIVI ========== -->
 <section id="tracking" class="hide">
+  <p class="mode hide" id="modeBanner"></p>
+
   <div class="live" id="live">
     <div class="big" id="lBig">En attente du GPS…</div>
     <div class="sub" id="lSub"><span class="pulse"></span>Suivi actif</div>
@@ -592,6 +605,9 @@ function routeGoogleVersTimeline(data) {
   };
 }
 
+const SNAP_LOG_M = 250;    // au-delà, l'écart de raccrochage mérite d'être noté
+const SNAP_MAX_M = 2000;   // au-delà, ce n'est plus du raccrochage : on refuse
+
 async function fetchRoute(a, b, departureMs) {
   const r = await fetch('/api/route', {
     method: 'POST',
@@ -608,7 +624,27 @@ async function fetchRoute(a, b, departureMs) {
   if (!r.ok) {
     throw new Error(j?.error || 'Calcul Google Routes indisponible.');
   }
-  return routeGoogleVersTimeline(j);
+  // Le fournisseur se lit sur la réponse du serveur, avant normalisation :
+  // routeGoogleVersTimeline réécrit provider en dur, un contrôle après coup
+  // porterait sur une constante posée par le client et ne dirait rien.
+  if (j?.provider !== 'google-routes') {
+    throw new Error(`Fournisseur inattendu « ${j?.provider ?? 'inconnu'} ». `
+      + 'Radius n\u2019accepte que Google Routes, il n\u2019existe aucun repli.');
+  }
+  const route = routeGoogleVersTimeline(j);
+
+  // Google raccroche les points demandés au réseau routier : quelques centaines
+  // de mètres sont normales, surtout hors agglomération. Des kilomètres veulent
+  // dire qu'on n'analyse pas le trajet saisi — on ne continue pas là-dessus.
+  const debut = route.coords[0], fin = route.coords[route.coords.length - 1];
+  route.ecartDep = dist(a.lat, a.lng, debut[0], debut[1]);
+  route.ecartArr = dist(b.lat, b.lng, fin[0], fin[1]);
+  if (route.ecartDep > SNAP_MAX_M || route.ecartArr > SNAP_MAX_M) {
+    throw new Error('Le trajet renvoyé par Google ne part pas du départ demandé ou '
+      + `n\u2019arrive pas à l\u2019arrivée demandée : ${fmtKm(route.ecartDep)} et `
+      + `${fmtKm(route.ecartArr)} d\u2019écart. Analyse interrompue.`);
+  }
+  return route;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -617,11 +653,12 @@ async function fetchRoute(a, b, departureMs) {
 const $ = (id) => document.getElementById(id);
 const state = { from: null, to: null, route: null, result: null, watch: null,
                 audio: null, wake: null, sim: null, swReg: null,
-                lastFixMs: 0, lastIdx: null, health: null };
+                lastFixMs: 0, lastIdx: null, health: null, mode: null };
 
 function fmtTime(ms) {
   return new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
+function latlng(p) { return `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`; }
 function fmtKm(m) {
   return m >= 1000 ? (m / 1000).toFixed(1).replace('.', ',') + ' km'
                    : (Math.round(m / 50) * 50) + ' m';
@@ -666,15 +703,28 @@ function wireSuggest(inputId, listId, key) {
 wireSuggest('from', 'sugFrom', 'from');
 wireSuggest('to', 'sugTo', 'to');
 
-/* ---- « ma position » ---- */
-$('from').addEventListener('focus', () => {
-  if ($('from').value) return;
-  navigator.geolocation?.getCurrentPosition((p) => {
-    if ($('from').value) return;
+/* ---- « ma position », sur demande explicite ----
+   La position réelle était auparavant relevée au simple focus du champ. Sur un
+   trajet fictif — analyser Paris depuis La Réunion — elle remplaçait le départ
+   sans qu'on l'ait demandé, et l'écart ne se voyait qu'après coup. Elle n'entre
+   plus dans le formulaire que par ce bouton. */
+$('useHere').onclick = () => {
+  const b = $('useHere');
+  if (!navigator.geolocation) { $('err').textContent = 'Position indisponible sur cet appareil.';
+    $('err').classList.remove('hide'); return; }
+  b.disabled = true; b.textContent = 'Localisation…';
+  navigator.geolocation.getCurrentPosition((p) => {
     state.from = { lat: p.coords.latitude, lng: p.coords.longitude, label: 'Ma position' };
     $('from').value = 'Ma position';
-  }, () => {}, { enableHighAccuracy: true, timeout: 8000 });
-});
+    $('sugFrom').classList.add('hide');
+    log(`Départ fixé sur la position réelle : ${latlng(state.from)}.`);
+    b.disabled = false; b.textContent = 'Utiliser ma position actuelle';
+  }, () => {
+    b.disabled = false; b.textContent = 'Utiliser ma position actuelle';
+    $('err').textContent = 'Position refusée ou indisponible.';
+    $('err').classList.remove('hide');
+  }, { enableHighAccuracy: true, timeout: 8000 });
+};
 
 /* ---- valeurs par défaut : maintenant ---- */
 (function initDateTime() {
@@ -700,6 +750,8 @@ $('analyze').onclick = async () => {
   }
   btn.disabled = true; btn.textContent = 'Calcul en cours…';
   try {
+    log(`Requête — origin ${latlng(state.from)} → destination ${latlng(state.to)}, `
+      + `départ ${fmtTime(dep)}.`);
     state.route = await fetchRoute(state.from, state.to, dep);
     state.result = analyze(state.route, dep);
 
@@ -708,10 +760,17 @@ $('analyze').onclick = async () => {
     // sans recalculer la route/ETA Google pour chaque heure candidate.
     state.advice = { ref: state.result, best: null };
 
-    log(`Google Routes — ${Math.round(state.route.totalS / 60)} min avec trafic, `
-      + `${Math.round(state.route.staticS / 60)} min hors trafic, `
-      + `facteur ${state.route.trafficFactor.toFixed(2)}.`);
-    if (state.route.trafficBasis === 'NOW' && dep > Date.now() + 60000) {
+    const rt = state.route;
+    log(`Fournisseur ${rt.provider} — ${(rt.totalM / 1000).toFixed(1)} km, `
+      + `${Math.round(rt.totalS / 60)} min avec trafic, `
+      + `${Math.round(rt.staticS / 60)} min hors trafic, `
+      + `facteur ${rt.trafficFactor.toFixed(2)}.`);
+    log(`Raccrochage Google — départ ${fmtKm(rt.ecartDep)}, arrivée ${fmtKm(rt.ecartArr)}.`);
+    if (rt.ecartDep > SNAP_LOG_M || rt.ecartArr > SNAP_LOG_M) {
+      log('Écart de raccrochage inhabituel : vérifier que les adresses choisies sont '
+        + 'bien au bord d\u2019une route.');
+    }
+    if (rt.trafficBasis === 'NOW' && dep > Date.now() + 60000) {
       log('Trafic Google calculé à partir de maintenant : vérifier l\u2019heure de départ envoyée.');
     }
     render();
@@ -1089,6 +1148,23 @@ document.addEventListener('visibilitychange', () => {
   state.audio?.ctx.resume().catch(() => {});
 });
 
+/* Deux modes distincts partagent l'écran de suivi. Le mode test ne consulte
+   jamais la position : c'est ce qui permet d'analyser puis de rejouer un trajet
+   à Paris ou à Los Angeles depuis La Réunion. Le suivi réel, lui, compare la
+   position au trajet — et doit dire « hors itinéraire » quand on en est loin. */
+function setMode(m) {
+  state.mode = m;
+  const b = $('modeBanner');
+  b.className = 'mode ' + m;
+  b.textContent = m === 'test'
+    ? 'Mode test — position simulée, le GPS n\u2019est pas utilisé'
+    : 'Suivi réel — votre position est comparée au trajet';
+  // Waze navigue depuis la position réelle : sans objet sur un trajet fictif.
+  $('openWaze').classList.toggle('hide', m === 'test');
+  $('trackNote').classList.toggle('hide', m === 'test');
+  $('stopTrack').textContent = m === 'test' ? 'Arrêter le test' : 'Arrêter le suivi réel';
+}
+
 /* ---- démarrage du suivi ---- */
 $('start').onclick = async () => {
   const btn = $('start');
@@ -1112,6 +1188,7 @@ $('start').onclick = async () => {
   alertCount = 0; lastAlertMs = 0;
   state.lastIdx = null; state.lastFixMs = 0;
 
+  setMode('reel');
   keepAlive();
   state.watch = navigator.geolocation.watchPosition(
     (p) => {
@@ -1137,25 +1214,57 @@ $('stopTrack').onclick = () => {
   if (state.sim) { clearInterval(state.sim); state.sim = null; }
   if (state.health) { clearInterval(state.health); state.health = null; }
   state.watch = null; state.lastIdx = null; state.lastFixMs = 0;
+  state.mode = null;
   $('live').classList.remove('stale');
   $('aliveWarn').classList.add('hide');
+  $('modeBanner').classList.add('hide');
+  $('openWaze').classList.remove('hide');
+  $('trackNote').classList.remove('hide');
   releaseAlive();
   $('tracking').classList.add('hide');
   $('result').classList.remove('hide');
   log('Suivi arrêté.');
 };
 
+/* Sans le paramètre `origin`, Google Maps part de la position du téléphone : le
+   trajet proposé n'était donc pas celui analysé dès qu'on n'était pas déjà au
+   départ. Les deux extrémités sont maintenant transmises explicitement, dans les
+   mêmes coordonnées que celles envoyées à Google Routes. */
+function urlMaps(a, b) {
+  return 'https://www.google.com/maps/dir/?api=1'
+    + `&origin=${a.lat},${a.lng}`
+    + `&destination=${b.lat},${b.lng}`
+    + '&travelmode=driving';
+}
+
+function ouvrirMaps() {
+  if (!state.from || !state.to) return;
+  const u = urlMaps(state.from, state.to);
+  log(`Google Maps — origin ${latlng(state.from)} → destination ${latlng(state.to)}.`);
+  location.href = u;
+}
+$('openMaps').onclick = ouvrirMaps;
+$('openMapsResult').onclick = ouvrirMaps;
+
+/* Le lien profond Waze ne transporte qu'un point d'arrivée — `ll` plus
+   `navigate=yes`. Waze n'expose aucun paramètre d'origine : il partira toujours
+   de la position réelle du téléphone et choisira son propre itinéraire.
+   Ce bouton ne prouve donc rien sur la correspondance A → B avec Radius, et ne
+   doit pas être présenté comme tel. Ne pas inventer un paramètre d'origine. */
 $('openWaze').onclick = () => {
   const t = state.to;
+  log(`Waze — destination ${latlng(t)} seulement. Waze part de la position réelle `
+    + 'du téléphone et choisit son propre itinéraire.');
   location.href = `https://waze.com/ul?ll=${t.lat},${t.lng}&navigate=yes`;
-};
-$('openMaps').onclick = () => {
-  const t = state.to;
-  location.href = `https://www.google.com/maps/dir/?api=1&destination=${t.lat},${t.lng}&travelmode=driving`;
 };
 
 /* ---- simulation : parcourt le trajet en accéléré, sans bouger ---- */
+/* Mode test : aucune géolocalisation n'est demandée ici, ni watchPosition ni
+   getCurrentPosition. Les positions injectées dans onPosition sont les points de
+   l'itinéraire analysé, donc l'écart latéral est nul par construction et
+   « hors itinéraire » ne peut pas apparaître à cause du téléphone. */
 $('sim').onclick = () => {
+  setMode('test');
   alertCount = 0; lastAlertMs = 0;
   for (const z of state.result.zones) z.announced = false;
   state.lastIdx = null; state.lastFixMs = Date.now();
