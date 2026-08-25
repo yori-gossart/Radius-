@@ -83,6 +83,30 @@ alors à ajuster `T` et à vérifier que les cas déjà validés ne régressent 
 
 Ne jamais modifier `T` sans une observation de terrain qui le justifie.
 
+`T.faceDelta` fait exception : c'est la définition de « de face » dans les
+phrases prononcées, pas un seuil de détection. Il ne se calibre pas.
+
+## Piège de calibration
+
+À La Réunion, le relief coupe le soleil trente à soixante minutes avant
+l'horizon astronomique. Le relief n'est pas branché — c'est un choix assumé,
+pas un oubli. Conséquence directe sur les relevés : **l'observation la plus
+fréquente sera « annoncé mais rien vu », alors que l'annonce était
+astronomiquement juste.**
+
+Céder à ces relevés-là reviendrait à resserrer `T` pour corriger une erreur que
+`T` n'a pas commise — et à casser le moteur pour la France métropolitaine, qui
+est le marché et dont l'horizon est largement dégagé.
+
+Règle :
+
+- `T` ne se calibre que sur des **tronçons à horizon dégagé** — côte ouest face
+  à la mer au coucher.
+- Les observations en terrain masqué vont dans un **second seau**. Elles se
+  notent, elles s'analysent, elles ne touchent **jamais** à `T`.
+- Noter l'**élévation solaire** à côté de chaque observation. Sans elle, on ne
+  peut plus trancher après coup entre les deux seaux.
+
 ## Vérifier une modification du moteur
 
 Après toute retouche du calcul, contrôler au minimum ces repères :
@@ -97,6 +121,12 @@ Après toute retouche du calcul, contrôler au minimum ces repères :
 | Même route à midi | aucune zone |
 | Même route de nuit | aucune zone |
 | Route nord-sud, même instant | nettement moins exposée |
+| Même géométrie, densités de nœuds différentes | même longueur de zone à moins de 10 % |
+
+Le dernier repère est celui qui manquait. L'itinéraire est rééchantillonné à
+pas fixe de 100 m avant analyse, précisément pour que `minZoneMeters` et
+`mergeGapMeters` mesurent le ciel et non l'espacement des nœuds OSM. Toute
+retouche de ce rééchantillonnage doit le rejouer.
 
 **Un piège à connaître :** en France métropolitaine, un axe est-ouest s'aligne
 avec le soleil **en été**, pas en hiver. Le soleil d'hiver est bas mais se lève

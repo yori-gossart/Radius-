@@ -99,6 +99,9 @@ button:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
   padding:18px;margin-bottom:16px;text-align:center}
 .live .big{font-family:var(--disp);font-size:32px;font-weight:700;line-height:1.1;margin-bottom:4px}
 .live .sub{color:var(--mute);font-size:14px}
+.live .age{font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:7px}
+.live.stale .age{color:var(--burn)}
+.live.stale .pulse{background:var(--burn);animation:none}
 .pulse{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--clear);
   margin-right:7px;animation:p 2s ease-in-out infinite;vertical-align:middle}
 @keyframes p{0%,100%{opacity:1}50%{opacity:.25}}
@@ -196,10 +199,13 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
 
 <!-- ========== ÉCRAN 3 : SUIVI ========== -->
 <section id="tracking" class="hide">
-  <div class="live">
+  <div class="live" id="live">
     <div class="big" id="lBig">En attente du GPS…</div>
     <div class="sub" id="lSub"><span class="pulse"></span>Suivi actif</div>
+    <div class="age" id="lAge">En attente du premier point GPS…</div>
   </div>
+
+  <p class="err hide" id="aliveWarn"></p>
 
   <div class="field row">
     <button class="go" id="openWaze">Ouvrir Waze</button>
@@ -325,6 +331,10 @@ const T = {
   high:     { maxElev: 8,  maxDelta: 12 },
   moderate: { maxElev: 15, maxDelta: 25 },
   low:      { maxElev: 20, maxDelta: 35 },
+  // « de face » est du vocabulaire, pas du risque. Tant que ce nombre était
+  // high.maxDelta, resserrer le seuil élevé sur un relevé de terrain
+  // réécrivait silencieusement le libellé de toutes les annonces.
+  faceDelta: 12,
   minElev: -0.5,        // sous l'horizon : plus de soleil
   minZoneMeters: 250,   // en deçà, ce n'est pas une zone mais un clignement
   mergeGapMeters: 800,  // deux zones plus proches que ça n'en font qu'une
@@ -351,6 +361,34 @@ const LABEL = { low: 'Faible', moderate: 'Modéré', high: 'Élevé' };
 /* ═══════════════════════════════════════════════════════════
    4. ANALYSE D'UN TRAJET
    ═══════════════════════════════════════════════════════════ */
+
+/* Les nœuds OSRM sont espacés de quelques mètres en ville et de plusieurs
+   centaines sur autoroute. À seuils identiques, la même géométrie donnait des
+   longueurs de zone dans un rapport de un à deux, et une zone de 300 m
+   disparaissait sous minZoneMeters dès 100 m d'espacement : on mesurait la
+   densité du tracé, pas le ciel. Un pas constant rend les seuils comparables
+   d'une route à l'autre — et borne à un demi-pas l'écart latéral de project(),
+   d'où les faux « hors itinéraire » sur les longues lignes droites. */
+const STEP_METERS = 100;
+
+function resample(coords, cum, cumTime, step) {
+  const total = cum[cum.length - 1];
+  const c = [coords[0]], cu = [0], ct = [cumTime[0]];
+  let i = 1;
+  for (let d = step; d < total; d += step) {
+    while (i < cum.length - 1 && cum[i] < d) i++;
+    const d0 = cum[i - 1], d1 = cum[i];
+    const f = d1 > d0 ? (d - d0) / (d1 - d0) : 0;
+    const [la0, lo0] = coords[i - 1], [la1, lo1] = coords[i];
+    c.push([la0 + (la1 - la0) * f, lo0 + (lo1 - lo0) * f]);
+    cu.push(d);
+    ct.push(cumTime[i - 1] + (cumTime[i] - cumTime[i - 1]) * f);
+  }
+  const last = coords.length - 1;
+  c.push(coords[last]); cu.push(total); ct.push(cumTime[last]);
+  return { coords: c, cum: cu, cumTime: ct };
+}
+
 function analyze(route, departureMs) {
   const { coords, cum, cumTime } = route;
   const samples = [];
@@ -401,17 +439,27 @@ function analyze(route, departureMs) {
 
   const zones = merged.map((z) => {
     const pts = z.pts;
+    // Les plages de score se chevauchent d'une bande à l'autre : au score
+    // seul, un point « modéré » pouvait représenter une zone « élevée » et
+    // fausser les chiffres relevés à côté d'elle.
     let worst = pts[0];
-    for (const p of pts) if (p.score > worst.score) worst = p;
+    for (const p of pts) {
+      if (RANK[p.level] > RANK[worst.level]
+        || (RANK[p.level] === RANK[worst.level] && p.score > worst.score)) worst = p;
+    }
     const first = pts[0], last = pts[pts.length - 1];
-    const len = Math.max(last.d - first.d, 120);
+    // Un échantillon vaut pour le pas qui le suit : sans ce terme la zone
+    // s'arrêtait un pas trop tôt, et les zones courtes tombaient sous
+    // minZoneMeters selon la densité du tracé.
+    const len = last.d - first.d + STEP_METERS;
+    const lastStepS = cumTime[Math.min(last.i + 1, cumTime.length - 1)] - last.t;
     return {
       level: pts.reduce((m, p) => RANK[p.level] > RANK[m] ? p.level : m, 'none'),
-      side: Math.abs(worst.delta) <= T.high.maxDelta ? 'face'
+      side: Math.abs(worst.delta) <= T.faceDelta ? 'face'
           : worst.delta < 0 ? 'gauche' : 'droite',
       startD: first.d, endD: first.d + len, length: len,
       startAt: first.at, endAt: last.at,
-      seconds: Math.max(last.t - first.t, 10),
+      seconds: Math.max(last.t - first.t + lastStepS, 5),
       elev: worst.elev, delta: worst.delta, score: worst.score,
       announced: false,
     };
@@ -470,7 +518,7 @@ async function fetchRoute(a, b) {
     const total = cum[cum.length - 1] || 1;
     for (let i = 0; i < cum.length; i++) cumTime[i] = j.routes[0].duration * cum[i] / total;
   }
-  return { coords: g, cum, cumTime,
+  return { ...resample(g, cum, cumTime, STEP_METERS),
     totalM: j.routes[0].distance, totalS: j.routes[0].duration };
 }
 
@@ -479,12 +527,16 @@ async function fetchRoute(a, b) {
    ═══════════════════════════════════════════════════════════ */
 const $ = (id) => document.getElementById(id);
 const state = { from: null, to: null, route: null, result: null, watch: null,
-                audio: null, wake: null, sim: null, swReg: null };
+                audio: null, wake: null, sim: null, swReg: null,
+                lastFixMs: 0, lastIdx: null, health: null };
 
 function fmtTime(ms) {
   return new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
-function fmtKm(m) { return m >= 1000 ? (m / 1000).toFixed(1) : (Math.round(m / 50) * 50) + ' m'; }
+function fmtKm(m) {
+  return m >= 1000 ? (m / 1000).toFixed(1).replace('.', ',') + ' km'
+                   : (Math.round(m / 50) * 50) + ' m';
+}
 function log(msg) {
   const l = $('log');
   if (l.dataset.clean !== '1') { l.innerHTML = ''; l.dataset.clean = '1'; }
@@ -550,10 +602,16 @@ $('analyze').onclick = async () => {
     err.textContent = 'Choisissez un départ et une arrivée dans la liste proposée.';
     err.classList.remove('hide'); return;
   }
+  // Un champ vide donnait NaN, donc aucun seuil franchi, donc le verdict
+  // « Aucun éblouissement prévu » — indiscernable d'un vrai feu vert.
+  const dep = new Date(`${$('date').value}T${$('time').value}`).getTime();
+  if (!Number.isFinite(dep)) {
+    err.textContent = 'Date ou heure incomplète.';
+    err.classList.remove('hide'); return;
+  }
   btn.disabled = true; btn.textContent = 'Calcul en cours…';
   try {
     state.route = await fetchRoute(state.from, state.to);
-    const dep = new Date(`${$('date').value}T${$('time').value}`).getTime();
     state.result = analyze(state.route, dep);
     state.advice = bestDeparture(state.route, dep);
     render();
@@ -670,12 +728,13 @@ function drawGlass(s) {
          text-anchor="middle">soleil hors du champ de vision</text>`}
   `;
   $('glassVal').textContent = `${Math.round(s.elev)}° au-dessus · ${Math.round(Math.abs(s.delta))}° ${
-    Math.abs(s.delta) <= T.high.maxDelta ? 'dans l\u2019axe' : s.delta < 0 ? 'à gauche' : 'à droite'}`;
+    Math.abs(s.delta) <= T.faceDelta ? 'dans l\u2019axe' : s.delta < 0 ? 'à gauche' : 'à droite'}`;
 }
 
 /* ═══════════════════════════════════════════════════════════
    7. SUIVI ET ALERTES
    ═══════════════════════════════════════════════════════════ */
+const PROJECT_WINDOW_M = 3000; // fenêtre de recherche de la projection
 const LEAD_SECONDS = 120;      // on prévient deux minutes avant
 const MIN_LEAD_SECONDS = 15;   // en deçà, il est trop tard : on se tait
 const MAX_ALERTS = 4;
@@ -708,8 +767,9 @@ function phrase(zone, secondsAhead) {
   const min = Math.max(1, Math.round(secondsAhead / 60));
   const where = zone.side === 'face' ? 'Soleil de face'
               : zone.side === 'gauche' ? 'Soleil à gauche' : 'Soleil à droite';
+  const km = Math.round(zone.length / 1000);
   const during = zone.length >= 1000
-    ? `${Math.round(zone.length / 1000)} kilomètre${zone.length >= 2000 ? 's' : ''}`
+    ? `${km} kilomètre${km > 1 ? 's' : ''}`
     : `${Math.round(zone.length / 100) * 100} mètres`;
   return `${where} dans ${min} minute${min > 1 ? 's' : ''}, ${during}.`;
 }
@@ -729,26 +789,86 @@ function fireAlert(zone, secondsAhead) {
   log(`Annonce ${alertCount}/${MAX_ALERTS} — « ${text} »`);
 }
 
+/** Indice de l'échantillon correspondant à une distance parcourue.
+    Le pas étant constant, la conversion est directe. */
+function indexAt(d) {
+  const n = state.route.cum.length;
+  return Math.max(0, Math.min(n - 1, Math.round(d / STEP_METERS)));
+}
+
+/** Préavis avant un point de l'itinéraire.
+    La référence est le temps de parcours d'OSRM — la même horloge que celle
+    qui a placé les zones. L'ancien repli en dur à 13,9 m/s donnait 45 s de
+    préavis réel à 130 km/h et 4 min à 30 km/h, ce qui rendait la question
+    « le moment de l'annonce est-il utile ? » impossible à mesurer.
+    coords.speed n'est retenu que s'il est plausible et cohérent avec OSRM :
+    au-delà d'un facteur deux, c'est un artefact GPS. */
+function secondsTo(alongD, targetD, speedMps) {
+  const { cumTime } = state.route;
+  const osrm = cumTime[indexAt(targetD)] - cumTime[indexAt(alongD)];
+  const gap = Math.max(0, targetD - alongD);
+  if (!(osrm > 0)) return 0;
+  const vOsrm = gap / osrm;
+  if (speedMps > 3 && speedMps < 60 && vOsrm > 0
+      && speedMps / vOsrm < 2 && vOsrm / speedMps < 2) return gap / speedMps;
+  return osrm;
+}
+
 /** Projette une position sur l'itinéraire : distance parcourue et écart latéral. */
 function project(lat, lng) {
   const { coords, cum } = state.route;
-  let best = { d: Infinity, i: 0 };
-  for (let i = 0; i < coords.length; i++) {
+  // Recherche bornée autour du dernier indice connu : sur un aller-retour ou
+  // une boucle — la tournée type — le point le plus proche à vol d'oiseau
+  // peut appartenir au brin opposé, et la distance à la zone recule.
+  const w = Math.round(PROJECT_WINDOW_M / STEP_METERS);
+  const ancre = state.lastIdx;
+  const from = ancre == null ? 0 : Math.max(0, ancre - w);
+  const to = ancre == null ? coords.length - 1 : Math.min(coords.length - 1, ancre + w);
+  let best = { d: Infinity, i: from };
+  for (let i = from; i <= to; i++) {
     const d = dist(lat, lng, coords[i][0], coords[i][1]);
     if (d < best.d) best = { d, i };
   }
+  // Décroché de la fenêtre : on rebalaie tout une fois pour se raccrocher.
+  if (best.d > 250 && ancre != null) { state.lastIdx = null; return project(lat, lng); }
+  state.lastIdx = best.i;
   return { along: cum[best.i], lateral: best.d, i: best.i };
+}
+
+/* Un embouteillage décale toute la course du soleil : les zones décrivent un
+   horaire qui n'est plus. On recale sur l'horloge réelle en repartant de la
+   position courante. Aucune donnée trafic — juste le temps qui a passé. */
+const DRIFT_MS = 600000;
+
+function reanalyzeIfDrifted(along) {
+  const ecoule = state.route.cumTime[indexAt(along)] * 1000;
+  const derive = Date.now() - (state.result.departureMs + ecoule);
+  if (Math.abs(derive) < DRIFT_MS) return;
+
+  const dejaDites = state.result.zones.filter((z) => z.announced);
+  state.result = analyze(state.route, Date.now() - ecoule);
+  // Une zone déjà passée, ou qui recouvre une zone déjà annoncée, se tait.
+  for (const z of state.result.zones) {
+    if (z.endD <= along
+      || dejaDites.some((d) => z.startD < d.endD && d.startD < z.endD)) z.announced = true;
+  }
+  log(`Horaire recalé : ${Math.round(derive / 60000)} min d'écart avec l'heure `
+    + `prévue. ${state.result.zones.length} zone(s) recalculée(s).`);
 }
 
 function onPosition(lat, lng, speedMps) {
   const p = project(lat, lng);
-  const zones = state.result.zones;
 
   if (p.lateral > 250) {
     $('lBig').textContent = 'Hors itinéraire';
     $('lSub').innerHTML = `<span class="pulse"></span>À ${fmtKm(p.lateral)} du trajet analysé`;
     return;
   }
+
+  // La simulation fait défiler le trajet en trente secondes : l'horloge réelle
+  // n'avance pas au même rythme, un recalage n'y aurait aucun sens.
+  if (!state.sim) reanalyzeIfDrifted(p.along);
+  const zones = state.result.zones;
 
   const next = zones.find((z) => z.endD > p.along);
   if (!next) {
@@ -758,8 +878,7 @@ function onPosition(lat, lng, speedMps) {
   }
 
   const gap = Math.max(0, next.startD - p.along);
-  const v = speedMps && speedMps > 3 ? speedMps : 13.9;   // 50 km/h par défaut
-  const secs = gap / v;
+  const secs = secondsTo(p.along, next.startD, speedMps);
 
   if (gap === 0) {
     $('lBig').textContent = `Soleil ${next.side === 'face' ? 'de face' : 'à ' + next.side}`;
@@ -768,10 +887,16 @@ function onPosition(lat, lng, speedMps) {
     $('lBig').textContent = fmtKm(gap);
     $('lSub').innerHTML = `<span class="pulse"></span>avant « soleil ${
       next.side === 'face' ? 'de face' : 'à ' + next.side}` +
-      ` », dans ${Math.round(secs / 60)} min`;
+      ` », dans ${Math.max(1, Math.round(secs / 60))} min`;
   }
 
-  if (secs <= LEAD_SECONDS) fireAlert(next, secs);
+  // L'affichage suit la zone la plus proche ; l'alerte doit voir par-dessus
+  // une zone faible qui masquerait une zone forte derrière elle.
+  const cible = zones.find((z) => z.endD > p.along && RANK[z.level] >= RANK.moderate);
+  if (cible) {
+    const attente = secondsTo(p.along, cible.startD, speedMps);
+    if (attente <= LEAD_SECONDS) fireAlert(cible, attente);
+  }
   renderLiveZones(p.along);
 }
 
@@ -790,6 +915,36 @@ function renderLiveZones(along) {
   }
 }
 
+/* ---- pannes visibles ----
+   Trois défaillances étaient muettes : position figée, maintien en arrière-plan
+   mort après un appel, date invalide. En phase de mesure une panne muette est
+   pire qu'un plantage : elle se note « rien annoncé, rien vu » et se compte
+   pour un vrai négatif. */
+const STALE_MS = 30000;
+
+function refreshHealth() {
+  const live = $('live'), age = $('lAge'), warn = $('aliveWarn');
+
+  if (!state.lastFixMs) {
+    live.classList.add('stale');
+    age.textContent = 'En attente du premier point GPS…';
+  } else {
+    const s = Math.round((Date.now() - state.lastFixMs) / 1000);
+    const perdu = s * 1000 > STALE_MS;
+    live.classList.toggle('stale', perdu);
+    age.textContent = perdu
+      ? `Position figée depuis ${s} s — l'appli ne suit plus.`
+      : `Dernier point GPS il y a ${s} s.`;
+  }
+
+  const ctx = state.audio?.ctx;
+  if (state.watch != null && (!ctx || ctx.state !== 'running')) {
+    warn.textContent = 'Maintien en arrière-plan interrompu — revenez sur cette '
+      + 'page et relancez le suivi, sinon les annonces ne partiront pas.';
+    warn.classList.remove('hide');
+  } else warn.classList.add('hide');
+}
+
 /* ---- garder la page vivante quand Waze passe devant ----
    Android suspend une page en arrière-plan. Un flux audio silencieux
    la maintient éveillée. C'est un contournement, pas une solution propre —
@@ -801,8 +956,18 @@ function keepAlive() {
     gain.gain.value = 0.0001;
     osc.connect(gain); gain.connect(ctx.destination);
     osc.start();
+    // Un appel entrant suspend le contexte. Sans reprise, Android est libre
+    // d'endormir la page et les annonces restantes ne partent jamais.
+    ctx.onstatechange = () => {
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      refreshHealth();
+    };
     state.audio = { ctx, osc };
   } catch {}
+  requestWake();
+}
+
+function requestWake() {
   navigator.wakeLock?.request('screen').then((w) => { state.wake = w; }).catch(() => {});
 }
 
@@ -811,6 +976,15 @@ function releaseAlive() {
   try { state.wake?.release(); } catch {}
   state.audio = state.wake = null;
 }
+
+/* Le verrou d'écran est relâché dès que la page passe en arrière-plan, et
+   rien ne le redemandait au retour. */
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (state.watch == null && !state.sim) return;
+  requestWake();
+  state.audio?.ctx.resume().catch(() => {});
+});
 
 /* ---- démarrage du suivi ---- */
 $('start').onclick = async () => {
@@ -824,15 +998,28 @@ $('start').onclick = async () => {
   // la synthèse vocale pour tout le reste du trajet.
   speak('Suivi activé.');
 
+  // Les zones décrivaient l'heure saisie dans le formulaire. Entre l'analyse
+  // et le départ réel il s'écoule souvent vingt minutes, et près du coucher
+  // l'azimut bouge d'un quart de degré par minute.
+  const maintenant = Date.now();
+  state.result = analyze(state.route, maintenant);
+  state.advice = bestDeparture(state.route, maintenant);
+  render();
+
   alertCount = 0; lastAlertMs = 0;
-  for (const z of state.result.zones) z.announced = false;
+  state.lastIdx = null; state.lastFixMs = 0;
 
   keepAlive();
   state.watch = navigator.geolocation.watchPosition(
-    (p) => onPosition(p.coords.latitude, p.coords.longitude, p.coords.speed),
+    (p) => {
+      state.lastFixMs = Date.now();
+      onPosition(p.coords.latitude, p.coords.longitude, p.coords.speed);
+    },
     (e) => log('GPS : ' + (e.message || 'position indisponible')),
     { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 },
   );
+  state.health = setInterval(refreshHealth, 1000);
+  refreshHealth();
 
   $('result').classList.add('hide');
   $('tracking').classList.remove('hide');
@@ -845,7 +1032,10 @@ $('start').onclick = async () => {
 $('stopTrack').onclick = () => {
   if (state.watch != null) navigator.geolocation.clearWatch(state.watch);
   if (state.sim) { clearInterval(state.sim); state.sim = null; }
-  state.watch = null;
+  if (state.health) { clearInterval(state.health); state.health = null; }
+  state.watch = null; state.lastIdx = null; state.lastFixMs = 0;
+  $('live').classList.remove('stale');
+  $('aliveWarn').classList.add('hide');
   releaseAlive();
   $('tracking').classList.add('hide');
   $('result').classList.remove('hide');
@@ -865,6 +1055,9 @@ $('openMaps').onclick = () => {
 $('sim').onclick = () => {
   alertCount = 0; lastAlertMs = 0;
   for (const z of state.result.zones) z.announced = false;
+  state.lastIdx = null; state.lastFixMs = Date.now();
+  state.health = setInterval(refreshHealth, 1000);
+  refreshHealth();
   $('result').classList.add('hide');
   $('tracking').classList.remove('hide');
   if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
@@ -879,6 +1072,7 @@ $('sim').onclick = () => {
     const [lat, lng] = coords[idx];
     // On force le cooldown à zéro en simulation, sinon une seule zone parle.
     lastAlertMs = 0;
+    state.lastFixMs = Date.now();
     onPosition(lat, lng, 16);
     idx += Math.max(1, Math.round(totalSteps / 120));
   }, 250);
