@@ -28,15 +28,24 @@ Ce n'est pas une phase de fonctionnalités. C'est une phase de mesure.
 
 ## Décisions à ne pas défaire
 
-**Aucune clé d'API, aucune facturation.** Nominatim pour les adresses, OSRM
-public pour les itinéraires. C'est délibéré : ça supprime le compte Google
-Cloud, la carte bancaire et le risque de dépassement. Ne pas proposer Google
-Routes ou Mapbox à ce stade.
+**Google Routes est la source de vérité du trajet.** Décision du 25 août 2026,
+qui **remplace explicitement** la règle précédente « aucune clé d'API, aucune
+facturation, ne pas proposer Google Routes ». Le prototype a désormais un projet
+Google Cloud facturé, et un budget à surveiller.
 
-**Aucun build, aucune dépendance, aucun `package.json`.** Quatre fichiers
-statiques. Le fondateur travaille depuis un téléphone : chaque outil ajouté
-est une friction réelle. Ne pas introduire de bundler, de framework ou de
-gestionnaire de paquets.
+- appel uniquement via `/api/route`, côté Vercel ;
+- secret `GOOGLE_MAPS_API_KEY`, jamais présent dans `index.html` ;
+- `travelMode = DRIVE`, `routingPreference = TRAFFIC_AWARE_OPTIMAL`,
+  `trafficModel = BEST_GUESS`, polyline `HIGH_QUALITY` en GeoJSON LineString ;
+- Nominatim reste provisoirement le géocodeur d'adresses ;
+- OSRM n'est plus la source de production et **ne doit jamais redevenir un
+  repli silencieux** : si Google échoue, l'interface le dit.
+
+**Aucun build, aucune dépendance, aucun `package.json`.** Des fichiers
+statiques, plus une seule fonction Vercel — `api/route.js`, sans dépendance,
+qui n'existe que pour tenir la clé Google hors du navigateur. Le fondateur
+travaille depuis un téléphone : chaque outil ajouté est une friction réelle.
+Ne pas introduire de bundler, de framework ou de gestionnaire de paquets.
 
 **Le relief n'est pas branché — c'est volontaire.** Le moteur sait masquer un
 soleil caché par une montagne, mais il lui faut des données d'altitude côté
@@ -50,11 +59,16 @@ Ne pas tenter de « réparer » ça, ne pas proposer de service worker périodiq
 ou de Web Push : ça ne résoudra pas le problème et ça ajoutera de la
 complexité.
 
-**Pas de trafic, pas de météo, pas d'itinéraires alternatifs.** Chacun est une
-V2 identifiée. Les ajouter maintenant brouillerait la mesure.
+**Pas de météo, pas d'itinéraires alternatifs.** Chacun est une V2 identifiée.
+Les ajouter maintenant brouillerait la mesure.
 
-**Jamais de radars, de trafic ou d'incidents.** Waze le fait mieux. Chaque
-ajout dans ce registre dilue la raison d'exister du produit.
+**Le trafic entre comme horloge, jamais comme contenu.** L'ETA `TRAFFIC_AWARE_OPTIMAL`
+sert à placer le soleil au bon moment sur le trajet. Le trafic détaillé par
+segment (`speedReadingIntervals`) et le recalcul de route en roulant restent hors
+périmètre.
+
+**Jamais de radars, d'incidents, ni d'affichage de trafic.** Waze le fait mieux.
+Chaque ajout dans ce registre dilue la raison d'exister du produit.
 
 ## La règle de parole
 
@@ -82,6 +96,22 @@ Après chaque série de trajets, le fondateur apportera des observations du type
 alors à ajuster `T` et à vérifier que les cas déjà validés ne régressent pas.
 
 Ne jamais modifier `T` sans une observation de terrain qui le justifie.
+
+## Ce que mesure la V0.2
+
+Vérifier que le moteur solaire fonctionne sur une route Google réaliste et sur
+une ETA qui tient compte du trafic.
+
+Google donne l'ETA trafic de la route entière et des durées **statiques** par
+étape. La timeline interne conserve le profil de vitesse statique des étapes,
+puis applique le facteur global `duration / staticDuration` pour aligner
+exactement l'arrivée sur l'ETA trafic. **Cette approximation est locale, connue,
+et doit rester visible dans le code** : un bouchon concentré sur un seul tronçon
+est lissé sur tout le trajet.
+
+`bestDeparture()` reste une fonction déterministe, mais **son affichage est
+désactivé en V0.2**. Rejouer ±90 minutes sans redemander une route à Google pour
+chaque heure candidate donnerait une fausse optimisation trafic.
 
 `T.faceDelta` fait exception : c'est la définition de « de face » dans les
 phrases prononcées, pas un seuil de détection. Il ne se calibre pas.

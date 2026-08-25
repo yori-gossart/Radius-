@@ -20,7 +20,8 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  // Nominatim et OSRM ne passent jamais par le cache.
+  // Nominatim et /api/route ne passent jamais par le cache : le premier est
+  // d'une autre origine, le second est un POST.
   if (req.method !== 'GET') return;
   let url;
   try { url = new URL(req.url); } catch { return; }

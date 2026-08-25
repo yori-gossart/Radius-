@@ -127,7 +127,7 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
 <div class="wrap">
 
 <header>
-  <p class="eyebrow">Prototype personnel — v0.1</p>
+  <p class="eyebrow">Prototype personnel — v0.2</p>
   <h1>Où le soleil sera <em>dans vos yeux</em></h1>
 </header>
 
@@ -155,8 +155,9 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
   </div>
   <button id="analyze">Analyser le trajet</button>
   <p class="err hide" id="err"></p>
-  <p class="note">Itinéraire fourni par OSRM, adresses par Nominatim. Aucune clé,
-    aucun compte, aucune position enregistrée.</p>
+  <p class="note">Itinéraire et ETA fournis par Google Routes avec trafic,
+    adresses par Nominatim. La clé Google reste côté serveur et n'est jamais
+    envoyée au navigateur.</p>
 </section>
 
 <!-- ========== ÉCRAN 2 : RÉSULTAT ========== -->
@@ -194,7 +195,9 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
   </div>
   <p class="note"><strong>Comment l'utiliser en vrai :</strong> appuyez sur « Démarrer le suivi »,
     autorisez la position et les notifications, puis choisissez Waze ou Maps. L'appli reste
-    active derrière et vous prévient à l'approche de chaque zone.</p>
+    active derrière et vous prévient à l'approche de chaque zone.
+    Pour valider cette version, privilégiez Google Maps : Waze peut choisir un
+    autre itinéraire que Google Routes.</p>
 </section>
 
 <!-- ========== ÉCRAN 3 : SUIVI ========== -->
@@ -362,8 +365,8 @@ const LABEL = { low: 'Faible', moderate: 'Modéré', high: 'Élevé' };
    4. ANALYSE D'UN TRAJET
    ═══════════════════════════════════════════════════════════ */
 
-/* Les nœuds OSRM sont espacés de quelques mètres en ville et de plusieurs
-   centaines sur autoroute. À seuils identiques, la même géométrie donnait des
+/* Les nœuds d'une polyline routière sont espacés de quelques mètres en ville et
+   de plusieurs centaines sur autoroute. À seuils identiques, la même géométrie donnait des
    longueurs de zone dans un rapport de un à deux, et une zone de 300 m
    disparaissait sous minZoneMeters dès 100 m d'espacement : on mesurait la
    densité du tracé, pas le ciel. Un pas constant rend les seuils comparables
@@ -498,28 +501,114 @@ async function geocode(q) {
   }));
 }
 
-async function fetchRoute(a, b) {
-  const u = `https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}`
-          + `?overview=full&geometries=geojson&annotations=duration`;
-  const r = await fetch(u);
-  if (!r.ok) throw new Error('Calcul d\u2019itinéraire indisponible.');
-  const j = await r.json();
-  if (j.code !== 'Ok' || !j.routes?.length) throw new Error('Aucun itinéraire routier entre ces deux points.');
+function routeGoogleVersTimeline(data) {
+  let coords = [], cum = [], cumStatic = [];
+  const routeM = Math.max(1, Number(data.distanceMeters) || 1);
+  const routeStaticS = Math.max(1,
+    Number(data.staticDurationSeconds) || Number(data.durationSeconds) || 1);
+  const fallbackSecondsPerMeter = routeStaticS / routeM;
 
-  const g = j.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-  const durs = j.routes[0].legs[0].annotation?.duration || [];
-  const cum = [0], cumTime = [0];
-  for (let i = 1; i < g.length; i++) {
-    cum.push(cum[i - 1] + dist(g[i - 1][0], g[i - 1][1], g[i][0], g[i][1]));
-    cumTime.push(cumTime[i - 1] + (durs[i - 1] ?? 0));
+  function init(p) {
+    coords = [[p[0], p[1]]];
+    cum = [0];
+    cumStatic = [0];
   }
-  // Sécurité : si OSRM n'a pas renvoyé les durées, on répartit proportionnellement.
-  if (!durs.length && j.routes[0].duration) {
-    const total = cum[cum.length - 1] || 1;
-    for (let i = 0; i < cum.length; i++) cumTime[i] = j.routes[0].duration * cum[i] / total;
+
+  function appendPoint(p, segmentMeters, segmentStaticSeconds) {
+    coords.push([p[0], p[1]]);
+    cum.push(cum[cum.length - 1] + segmentMeters);
+    cumStatic.push(cumStatic[cumStatic.length - 1] + segmentStaticSeconds);
   }
-  return { ...resample(g, cum, cumTime, STEP_METERS),
-    totalM: j.routes[0].distance, totalS: j.routes[0].duration };
+
+  for (const step of data.steps || []) {
+    const pts = step.coordinates || [];
+    if (pts.length < 2) continue;
+
+    if (!coords.length) init(pts[0]);
+    else {
+      const last = coords[coords.length - 1];
+      const bridge = dist(last[0], last[1], pts[0][0], pts[0][1]);
+      // Les polylines des étapes Google doivent se joindre. Si une petite
+      // discontinuité apparaît, on la conserve plutôt que de créer un saut
+      // géométrique invisible dans le suivi GPS.
+      if (bridge > 2) appendPoint(pts[0], bridge, bridge * fallbackSecondsPerMeter);
+    }
+
+    const seg = [];
+    let geomM = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const d = dist(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]);
+      seg.push(d); geomM += d;
+    }
+
+    const stepStaticS = Number(step.staticDurationSeconds) > 0
+      ? Number(step.staticDurationSeconds)
+      : geomM * fallbackSecondsPerMeter;
+
+    for (let i = 1; i < pts.length; i++) {
+      const d = seg[i - 1];
+      const dt = geomM > 0 ? stepStaticS * d / geomM : 0;
+      appendPoint(pts[i], d, dt);
+    }
+  }
+
+  // Repli structurel seulement si Google n'a pas livré les étapes. Ce n'est
+  // pas un fallback OSRM : la géométrie reste celle de Google Routes.
+  if (coords.length < 2 && Array.isArray(data.geometry) && data.geometry.length >= 2) {
+    coords = [[data.geometry[0][0], data.geometry[0][1]]];
+    cum = [0]; cumStatic = [0];
+    for (let i = 1; i < data.geometry.length; i++) {
+      const p0 = data.geometry[i - 1], p1 = data.geometry[i];
+      const d = dist(p0[0], p0[1], p1[0], p1[1]);
+      appendPoint(p1, d, d * fallbackSecondsPerMeter);
+    }
+  }
+
+  if (coords.length < 2) throw new Error('Trajet Google sans géométrie exploitable.');
+
+  // Les durées détaillées d'une étape sont statiques. On conserve leur profil
+  // relatif puis on l'aligne exactement sur staticDuration de la route.
+  const builtStatic = cumStatic[cumStatic.length - 1];
+  if (builtStatic > 0 && Number(data.staticDurationSeconds) > 0) {
+    const scale = Number(data.staticDurationSeconds) / builtStatic;
+    cumStatic = cumStatic.map((t) => t * scale);
+  }
+
+  // V0.2 : Google donne l'ETA trafic exacte pour la route entière mais pas une
+  // durée trafic pour chaque étape. On applique donc le facteur trafic global
+  // au profil de vitesse statique des étapes. Limitation volontaire et tracée.
+  const trafficFactor = Number(data.trafficFactor) > 0 ? Number(data.trafficFactor) : 1;
+  const cumTime = cumStatic.map((t) => t * trafficFactor);
+  const sampled = resample(coords, cum, cumTime, STEP_METERS);
+
+  return {
+    ...sampled,
+    totalM: Number(data.distanceMeters) || cum[cum.length - 1],
+    totalS: Number(data.durationSeconds) || cumTime[cumTime.length - 1],
+    staticS: Number(data.staticDurationSeconds) || cumStatic[cumStatic.length - 1],
+    provider: 'google-routes',
+    trafficFactor,
+    trafficBasis: data.trafficBasis || 'NOW',
+  };
+}
+
+async function fetchRoute(a, b, departureMs) {
+  const r = await fetch('/api/route', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      origin: { lat: a.lat, lng: a.lng },
+      destination: { lat: b.lat, lng: b.lng },
+      departureMs,
+    }),
+  });
+
+  let j = null;
+  try { j = await r.json(); } catch {}
+  if (!r.ok) {
+    throw new Error(j?.error || 'Calcul Google Routes indisponible.');
+  }
+  return routeGoogleVersTimeline(j);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -611,9 +700,20 @@ $('analyze').onclick = async () => {
   }
   btn.disabled = true; btn.textContent = 'Calcul en cours…';
   try {
-    state.route = await fetchRoute(state.from, state.to);
+    state.route = await fetchRoute(state.from, state.to, dep);
     state.result = analyze(state.route, dep);
-    state.advice = bestDeparture(state.route, dep);
+
+    // V0.2 : désactivé volontairement. Le conseil ±90 min rejouerait seulement
+    // le soleil sur le même trafic et pourrait donc prétendre optimiser un départ
+    // sans recalculer la route/ETA Google pour chaque heure candidate.
+    state.advice = { ref: state.result, best: null };
+
+    log(`Google Routes — ${Math.round(state.route.totalS / 60)} min avec trafic, `
+      + `${Math.round(state.route.staticS / 60)} min hors trafic, `
+      + `facteur ${state.route.trafficFactor.toFixed(2)}.`);
+    if (state.route.trafficBasis === 'NOW' && dep > Date.now() + 60000) {
+      log('Trafic Google calculé à partir de maintenant : vérifier l\u2019heure de départ envoyée.');
+    }
     render();
     $('setup').classList.add('hide');
     $('result').classList.remove('hide');
@@ -797,21 +897,22 @@ function indexAt(d) {
 }
 
 /** Préavis avant un point de l'itinéraire.
-    La référence est le temps de parcours d'OSRM — la même horloge que celle
-    qui a placé les zones. L'ancien repli en dur à 13,9 m/s donnait 45 s de
+    La référence est la timeline Google Routes construite à partir des durées
+    statiques des étapes puis alignée sur l'ETA trafic de la route — la même
+    horloge que celle qui a placé les zones. L'ancien repli en dur à 13,9 m/s donnait 45 s de
     préavis réel à 130 km/h et 4 min à 30 km/h, ce qui rendait la question
     « le moment de l'annonce est-il utile ? » impossible à mesurer.
-    coords.speed n'est retenu que s'il est plausible et cohérent avec OSRM :
-    au-delà d'un facteur deux, c'est un artefact GPS. */
+    coords.speed n'est retenu que s'il est plausible et cohérent avec cette
+    timeline : au-delà d'un facteur deux, c'est un artefact GPS. */
 function secondsTo(alongD, targetD, speedMps) {
   const { cumTime } = state.route;
-  const osrm = cumTime[indexAt(targetD)] - cumTime[indexAt(alongD)];
+  const prevu = cumTime[indexAt(targetD)] - cumTime[indexAt(alongD)];
   const gap = Math.max(0, targetD - alongD);
-  if (!(osrm > 0)) return 0;
-  const vOsrm = gap / osrm;
-  if (speedMps > 3 && speedMps < 60 && vOsrm > 0
-      && speedMps / vOsrm < 2 && vOsrm / speedMps < 2) return gap / speedMps;
-  return osrm;
+  if (!(prevu > 0)) return 0;
+  const vPrevue = gap / prevu;
+  if (speedMps > 3 && speedMps < 60 && vPrevue > 0
+      && speedMps / vPrevue < 2 && vPrevue / speedMps < 2) return gap / speedMps;
+  return prevu;
 }
 
 /** Projette une position sur l'itinéraire : distance parcourue et écart latéral. */
@@ -837,7 +938,9 @@ function project(lat, lng) {
 
 /* Un embouteillage décale toute la course du soleil : les zones décrivent un
    horaire qui n'est plus. On recale sur l'horloge réelle en repartant de la
-   position courante. Aucune donnée trafic — juste le temps qui a passé. */
+   position courante. Le trafic initial est inclus dans l'ETA Google, mais V0.2
+   ne redemande pas encore une nouvelle route en roulant : ce recalage corrige
+   seulement l'horloge solaire à partir du temps réellement écoulé. */
 const DRIFT_MS = 600000;
 
 function reanalyzeIfDrifted(along) {
@@ -1003,7 +1106,7 @@ $('start').onclick = async () => {
   // l'azimut bouge d'un quart de degré par minute.
   const maintenant = Date.now();
   state.result = analyze(state.route, maintenant);
-  state.advice = bestDeparture(state.route, maintenant);
+  state.advice = { ref: state.result, best: null };   // désactivé en V0.2, voir plus haut
   render();
 
   alertCount = 0; lastAlertMs = 0;
