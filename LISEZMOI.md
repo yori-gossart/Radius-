@@ -1,17 +1,24 @@
 # Prototype personnel — mode d'emploi
 
-Une page web autonome. Aucune clé d'API, aucun compte, aucune facturation.
-Adresses par Nominatim (OpenStreetMap), itinéraires par OSRM public.
+Une page web statique, plus une seule fonction serveur. Itinéraire et ETA avec
+trafic par **Google Routes**, adresses par Nominatim (OpenStreetMap).
+
+Depuis la v0.2, le prototype consomme une API facturée. La clé vit dans la
+variable Vercel `GOOGLE_MAPS_API_KEY` et ne descend jamais dans le navigateur —
+voir `GOOGLE_SETUP_V02.md`. Prévoir un budget et des quotas bas côté Google Cloud.
 
 ## Mise en ligne depuis le téléphone — environ 15 minutes
 
 1. **GitHub** → *New repository* → nom au choix, **Public**.
-2. *Add file → Upload files* → déposer les quatre fichiers :
-   `index.html`, `sw.js`, `manifest.json`, `icon.svg`. → *Commit*.
+2. *Add file → Upload files* → déposer `index.html`, `sw.js`, `manifest.json`,
+   `icon.svg` et le dossier `api/`. → *Commit*.
 3. **Vercel** → *Add New Project* → *Import Git Repository* → choisir le dépôt.
    Framework : **Other**. Aucun réglage à changer. → *Deploy*.
-4. Ouvrir l'adresse `.vercel.app` dans **Chrome sur Android**.
-5. Menu ⋮ → **Ajouter à l'écran d'accueil**. Lancer depuis l'icône, pas depuis
+4. **Vercel → Settings → Environment Variables** : ajouter `GOOGLE_MAPS_API_KEY`
+   en Production, puis redéployer. Sans elle, l'analyse échoue avec un message
+   explicite — il n'y a aucun repli silencieux.
+5. Ouvrir l'adresse `.vercel.app` dans **Chrome sur Android**.
+6. Menu ⋮ → **Ajouter à l'écran d'accueil**. Lancer depuis l'icône, pas depuis
    l'onglet : en mode autonome, Android garde la page vivante plus longtemps.
 
 HTTPS est indispensable pour les notifications et la position — Vercel le fournit.
@@ -30,7 +37,8 @@ les annonces se déclenchent. Cela vérifie la voix et les notifications en tren
 
 1. Analyser le trajet.
 2. **Démarrer le suivi** → autoriser la position, puis les notifications.
-3. **Ouvrir Waze**. Naviguer normalement.
+3. **Ouvrir Maps** de préférence : Waze peut choisir un autre itinéraire que
+   celui analysé par Google Routes, et le suivi décrocherait.
 4. À l'approche d'une zone : notification + annonce vocale par-dessus le GPS.
 
 Le meilleur créneau est une fin d'après-midi dégagée, sur une route orientée
@@ -43,10 +51,15 @@ vers le soleil couchant.
 - **Le maintien en arrière-plan est un contournement** — un flux audio inaudible
   empêche Android d'endormir la page. Ça fonctionne, ce n'est pas propre.
   Seule une application native le fera correctement.
-- **Pas d'itinéraires alternatifs.** OSRM public n'a aucune garantie de service :
-  parfait pour essayer, à ne pas mettre entre les mains de clients.
-- **Pas de trafic.** Les horaires sont ceux d'une route fluide ; un embouteillage
-  décale tout. C'est justement une chose à mesurer.
+- **Pas d'itinéraires alternatifs.** Un seul trajet est analysé, celui que
+  Google renvoie en premier.
+- **Le trafic n'entre que comme horloge.** L'ETA Google tient compte du trafic
+  au départ, mais le facteur est appliqué globalement : un bouchon concentré sur
+  un tronçon est lissé sur tout le trajet. Et la route n'est pas recalculée en
+  roulant. C'est justement une chose à mesurer.
+- **Pas de conseil d'heure de départ.** La fonction existe, son affichage est
+  désactivé en v0.2 : elle rejouerait le soleil sans redemander une route à
+  Google pour chaque heure candidate.
 
 ## À noter pendant vos essais
 
