@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512"
+     role="img" aria-label="Soleil bas dans un pare-brise">
+  <!-- Icône maskable : tout le motif tient dans le cercle central de rayon 205,
+       la zone qu'Android ne rogne jamais. -->
+  <defs>
+    <clipPath id="pareBrise">
+      <path d="M150 150 H362 L402 380 H110 Z"/>
+    </clipPath>
+    <radialGradient id="halo">
+      <stop offset="0%" stop-color="#FFB43A" stop-opacity=".55"/>
+      <stop offset="100%" stop-color="#FFB43A" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="#10151B"/>
+  <path d="M150 150 H362 L402 380 H110 Z" fill="#19202A"/>
+
+  <g clip-path="url(#pareBrise)">
+    <circle cx="256" cy="278" r="120" fill="url(#halo)"/>
+    <line x1="110" y1="316" x2="402" y2="316" stroke="#7FA8C9" stroke-width="6"/>
+    <circle cx="256" cy="278" r="38" fill="#FFB43A"/>
+  </g>
+</svg>
