@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10151B">
+<title>Éblouissement — anticipation solaire</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#10151B; --panel:#19202A; --panel2:#141A22; --edge:#29323E;
+  --ink:#E8EDF3; --mute:#74839A;
+  --sky:#7FA8C9; --amber:#FFB43A; --burn:#FF6A2B; --clear:#5FBFA8;
+  --disp:'IBM Plex Sans Condensed',system-ui,sans-serif;
+  --body:'IBM Plex Sans',system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);
+  font-size:16px;line-height:1.5;overscroll-behavior-y:contain}
+body{padding:0 0 max(24px,env(safe-area-inset-bottom))}
+.wrap{max-width:520px;margin:0 auto;padding:0 18px}
+
+/* ---- en-tête ---- */
+header{padding:22px 0 16px;border-bottom:1px solid var(--edge);margin-bottom:20px}
+.eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--mute);margin:0 0 6px}
+h1{font-family:var(--disp);font-weight:700;font-size:27px;letter-spacing:-.01em;margin:0;line-height:1.15}
+h1 em{font-style:normal;color:var(--amber)}
+
+/* ---- champs ---- */
+label{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--mute);margin:0 0 7px}
+.field{margin-bottom:16px}
+input,select{width:100%;background:var(--panel2);border:1px solid var(--edge);color:var(--ink);
+  font-family:var(--body);font-size:16px;padding:13px 14px;border-radius:9px;outline:none}
+input:focus,select:focus{border-color:var(--sky);box-shadow:0 0 0 3px rgba(127,168,201,.16)}
+.row{display:flex;gap:10px}.row>*{flex:1}
+
+button{font-family:var(--disp);font-weight:600;font-size:16px;letter-spacing:.01em;
+  border:none;border-radius:9px;padding:15px;width:100%;cursor:pointer;
+  background:var(--sky);color:#0C1218;transition:opacity .15s}
+button:active{opacity:.75}
+button:disabled{opacity:.4;cursor:default}
+button.ghost{background:transparent;border:1px solid var(--edge);color:var(--ink)}
+button.go{background:var(--amber);color:#1A1204}
+button.stop{background:transparent;border:1px solid var(--burn);color:var(--burn)}
+button:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
+.mini{font-size:13px;padding:10px}
+
+/* ---- pare-brise, l'élément signature ---- */
+.glass{position:relative;background:var(--panel);border:1px solid var(--edge);
+  border-radius:12px;overflow:hidden;margin-bottom:18px}
+.glass svg{display:block;width:100%;height:auto}
+.glass .tag{position:absolute;top:11px;left:12px;font-family:var(--mono);font-size:10px;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+.glass .val{position:absolute;top:11px;right:12px;font-family:var(--mono);font-size:11px;color:var(--mute)}
+
+/* ---- verdict ---- */
+.verdict{border:1px solid var(--edge);border-left-width:3px;border-radius:10px;
+  background:var(--panel);padding:16px 16px 15px;margin-bottom:16px}
+.verdict.none{border-left-color:var(--clear)}
+.verdict.low{border-left-color:var(--sky)}
+.verdict.moderate{border-left-color:var(--amber)}
+.verdict.high{border-left-color:var(--burn)}
+.verdict h2{font-family:var(--disp);font-size:21px;font-weight:700;margin:0 0 3px}
+.verdict p{margin:0;color:var(--mute);font-size:14px}
+.stats{display:flex;gap:20px;margin-top:13px;padding-top:13px;border-top:1px solid var(--edge)}
+.stat b{display:block;font-family:var(--mono);font-size:20px;font-weight:500;color:var(--ink)}
+.stat span{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--mute)}
+
+/* ---- conseil de départ ---- */
+.advice{background:linear-gradient(180deg,rgba(255,180,58,.08),rgba(255,180,58,.02));
+  border:1px solid rgba(255,180,58,.3);border-radius:10px;padding:14px 16px;margin-bottom:16px}
+.advice .k{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--amber);margin-bottom:5px}
+.advice .v{font-family:var(--disp);font-size:17px;font-weight:600}
+.advice .v em{font-style:normal;color:var(--amber)}
+.advice small{color:var(--mute);font-size:13px;display:block;margin-top:3px}
+
+/* ---- liste des zones ---- */
+.zones{list-style:none;padding:0;margin:0 0 18px}
+.zones li{display:flex;gap:12px;align-items:baseline;padding:12px 0;border-bottom:1px solid var(--edge)}
+.zones li:last-child{border-bottom:none}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;transform:translateY(-1px)}
+.dot.low{background:var(--sky)}.dot.moderate{background:var(--amber)}.dot.high{background:var(--burn)}
+.zt{flex:1}
+.zt b{font-family:var(--disp);font-size:15px;font-weight:600;display:block}
+.zt span{font-size:13px;color:var(--mute)}
+.zk{font-family:var(--mono);font-size:12px;color:var(--mute);text-align:right;flex:none}
+
+/* ---- suivi ---- */
+.live{border:1px solid var(--edge);border-radius:12px;background:var(--panel);
+  padding:18px;margin-bottom:16px;text-align:center}
+.live .big{font-family:var(--disp);font-size:32px;font-weight:700;line-height:1.1;margin-bottom:4px}
+.live .sub{color:var(--mute);font-size:14px}
+.pulse{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--clear);
+  margin-right:7px;animation:p 2s ease-in-out infinite;vertical-align:middle}
+@keyframes p{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.pulse{animation:none}*{transition:none!important}}
+
+.note{font-size:13px;color:var(--mute);line-height:1.55;margin:16px 0}
+.note strong{color:var(--ink);font-weight:600}
+.err{color:var(--burn);font-size:14px;margin:12px 0}
+.hide{display:none!important}
+.sec{margin-top:26px;padding-top:20px;border-top:1px solid var(--edge)}
+.sec h3{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--mute);font-weight:400;margin:0 0 12px}
+.suggest{list-style:none;padding:0;margin:6px 0 0;border:1px solid var(--edge);border-radius:9px;
+  overflow:hidden;background:var(--panel2)}
+.suggest li{padding:12px 14px;font-size:14px;border-bottom:1px solid var(--edge);cursor:pointer}
+.suggest li:last-child{border-bottom:none}
+.suggest li:active{background:var(--panel)}
+footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
+  font-family:var(--mono);font-size:10.5px;color:var(--mute);line-height:1.7}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">Prototype personnel — v0.1</p>
+  <h1>Où le soleil sera <em>dans vos yeux</em></h1>
+</header>
+
+<!-- ========== ÉCRAN 1 : SAISIE ========== -->
+<section id="setup">
+  <div class="field">
+    <label for="from">Départ</label>
+    <input id="from" placeholder="Adresse, ou « ma position »" autocomplete="off">
+    <ul class="suggest hide" id="sugFrom"></ul>
+  </div>
+  <div class="field">
+    <label for="to">Arrivée</label>
+    <input id="to" placeholder="Adresse de destination" autocomplete="off">
+    <ul class="suggest hide" id="sugTo"></ul>
+  </div>
+  <div class="field row">
+    <div>
+      <label for="date">Date</label>
+      <input id="date" type="date">
+    </div>
+    <div>
+      <label for="time">Heure de départ</label>
+      <input id="time" type="time">
+    </div>
+  </div>
+  <button id="analyze">Analyser le trajet</button>
+  <p class="err hide" id="err"></p>
+  <p class="note">Itinéraire fourni par OSRM, adresses par Nominatim. Aucune clé,
+    aucun compte, aucune position enregistrée.</p>
+</section>
+
+<!-- ========== ÉCRAN 2 : RÉSULTAT ========== -->
+<section id="result" class="hide">
+  <div class="glass">
+    <span class="tag">Vue depuis le pare-brise</span>
+    <span class="val" id="glassVal"></span>
+    <svg viewBox="0 0 400 210" id="glassSvg" aria-label="Position du soleil dans le champ de vision"></svg>
+  </div>
+
+  <div class="verdict" id="verdict">
+    <h2 id="vTitle"></h2>
+    <p id="vText"></p>
+    <div class="stats">
+      <div class="stat"><b id="sDist"></b><span>km exposés</span></div>
+      <div class="stat"><b id="sTime"></b><span>min exposées</span></div>
+      <div class="stat"><b id="sZones"></b><span>zones</span></div>
+    </div>
+  </div>
+
+  <div class="advice hide" id="advice">
+    <div class="k">Heure de départ</div>
+    <div class="v" id="aText"></div>
+    <small id="aSub"></small>
+  </div>
+
+  <ul class="zones" id="zoneList"></ul>
+
+  <div class="field">
+    <button class="go" id="start">Démarrer le suivi, puis ouvrir le GPS</button>
+  </div>
+  <div class="row" style="margin-bottom:14px">
+    <button class="ghost mini" id="back">Modifier</button>
+    <button class="ghost mini" id="sim">Simuler le trajet</button>
+  </div>
+  <p class="note"><strong>Comment l'utiliser en vrai :</strong> appuyez sur « Démarrer le suivi »,
+    autorisez la position et les notifications, puis choisissez Waze ou Maps. L'appli reste
+    active derrière et vous prévient à l'approche de chaque zone.</p>
+</section>
+
+<!-- ========== ÉCRAN 3 : SUIVI ========== -->
+<section id="tracking" class="hide">
+  <div class="live">
+    <div class="big" id="lBig">En attente du GPS…</div>
+    <div class="sub" id="lSub"><span class="pulse"></span>Suivi actif</div>
+  </div>
+
+  <div class="field row">
+    <button class="go" id="openWaze">Ouvrir Waze</button>
+    <button class="ghost" id="openMaps">Ouvrir Maps</button>
+  </div>
+  <div class="field">
+    <button class="stop" id="stopTrack">Arrêter le suivi</button>
+  </div>
+
+  <ul class="zones" id="liveZones"></ul>
+
+  <p class="note" id="trackNote"><strong>Gardez cet onglet ouvert en arrière-plan.</strong>
+    Sur Samsung, désactivez l'optimisation de batterie pour le navigateur, sinon Android
+    endort la page dès que vous passez sur Waze.</p>
+</section>
+
+<div class="sec">
+  <h3>Journal</h3>
+  <ul class="zones" id="log"><li><div class="zt"><span>Rien pour l'instant.</span></div></li></ul>
+</div>
+
+<footer>
+  Information prévisionnelle. Ne dispense en aucun cas de la vigilance du conducteur.<br>
+  Aucune donnée de position n'est transmise ni conservée.
+</footer>
+
+</div>
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════════
+   1. POSITION DU SOLEIL — algorithme NOAA
+   ═══════════════════════════════════════════════════════════ */
+const R = Math.PI / 180, D = 180 / Math.PI;
+
+function solar(dateMs, lat, lng) {
+  const jd = dateMs / 86400000 + 2440587.5;
+  const t = (jd - 2451545) / 36525;
+  const L0 = (280.46646 + t * (36000.76983 + t * 0.0003032)) % 360;
+  const M = 357.52911 + t * (35999.05029 - 0.0001537 * t);
+  const e = 0.016708634 - t * (0.000042037 + 0.0000001267 * t);
+  const C = Math.sin(M * R) * (1.914602 - t * (0.004817 + 0.000014 * t))
+          + Math.sin(2 * M * R) * (0.019993 - 0.000101 * t)
+          + Math.sin(3 * M * R) * 0.000289;
+  const trueLong = L0 + C;
+  const omega = 125.04 - 1934.136 * t;
+  const lambda = trueLong - 0.00569 - 0.00478 * Math.sin(omega * R);
+  const seconds = 21.448 - t * (46.815 + t * (0.00059 - t * 0.001813));
+  const e0 = 23 + (26 + seconds / 60) / 60;
+  const eps = e0 + 0.00256 * Math.cos(omega * R);
+  const decl = Math.asin(Math.sin(eps * R) * Math.sin(lambda * R)) * D;
+
+  const y = Math.tan(eps / 2 * R) ** 2;
+  const eqTime = 4 * D * (y * Math.sin(2 * L0 * R)
+    - 2 * e * Math.sin(M * R)
+    + 4 * e * y * Math.sin(M * R) * Math.cos(2 * L0 * R)
+    - 0.5 * y * y * Math.sin(4 * L0 * R)
+    - 1.25 * e * e * Math.sin(2 * M * R));
+
+  const d = new Date(dateMs);
+  const minutesUTC = d.getUTCHours() * 60 + d.getUTCMinutes() + d.getUTCSeconds() / 60;
+  let ha = (minutesUTC + eqTime + 4 * lng) / 4 - 180;
+  while (ha < -180) ha += 360;
+  while (ha > 180) ha -= 360;
+
+  const latR = lat * R, decR = decl * R, haR = ha * R;
+  const cosZ = Math.sin(latR) * Math.sin(decR) + Math.cos(latR) * Math.cos(decR) * Math.cos(haR);
+  const zenith = Math.acos(Math.max(-1, Math.min(1, cosZ))) * D;
+  let elev = 90 - zenith;
+
+  // Réfraction atmosphérique : le soleil paraît plus haut qu'il n'est.
+  if (elev > -1 && elev < 85) {
+    const te = Math.tan(elev * R);
+    let r = elev > 5 ? 58.1 / te - 0.07 / te ** 3 + 0.000086 / te ** 5
+          : elev > -0.575 ? 1735 + elev * (-518.2 + elev * (103.4 + elev * (-12.79 + elev * 0.711)))
+          : -20.772 / te;
+    elev += r / 3600;
+  }
+
+  let az;
+  const denom = Math.cos(latR) * Math.sin(zenith * R);
+  if (Math.abs(denom) > 1e-9) {
+    let c = (Math.sin(latR) * Math.cos(zenith * R) - Math.sin(decR)) / denom;
+    az = 180 - Math.acos(Math.max(-1, Math.min(1, c))) * D;
+    if (ha > 0) az = -az;
+  } else az = lat > 0 ? 180 : 0;
+  az = ((az % 360) + 360) % 360;
+
+  return { azimuth: az, elevation: elev };
+}
+
+/* ═══════════════════════════════════════════════════════════
+   2. GÉOMÉTRIE
+   ═══════════════════════════════════════════════════════════ */
+const EARTH = 6371008.8;
+
+function dist(aLat, aLng, bLat, bLng) {
+  const dLat = (bLat - aLat) * R, dLng = (bLng - aLng) * R;
+  const s = Math.sin(dLat / 2) ** 2
+    + Math.cos(aLat * R) * Math.cos(bLat * R) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+
+function bearing(aLat, aLng, bLat, bLng) {
+  const p1 = aLat * R, p2 = bLat * R, dl = (bLng - aLng) * R;
+  const y = Math.sin(dl) * Math.cos(p2);
+  const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+  return ((Math.atan2(y, x) * D) + 360) % 360;
+}
+
+/** Écart signé cap → azimut, dans (-180, 180]. Négatif = soleil à gauche. */
+function signedDelta(heading, target) {
+  let d = ((target - heading) % 360 + 360) % 360;
+  return d > 180 ? d - 360 : d;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   3. CLASSIFICATION DU RISQUE
+   Ces seuils sont LE paramètre à calibrer sur le terrain.
+   La littérature situe la gêne sous 20° d'élévation.
+   ═══════════════════════════════════════════════════════════ */
+const T = {
+  high:     { maxElev: 8,  maxDelta: 12 },
+  moderate: { maxElev: 15, maxDelta: 25 },
+  low:      { maxElev: 20, maxDelta: 35 },
+  minElev: -0.5,        // sous l'horizon : plus de soleil
+  minZoneMeters: 250,   // en deçà, ce n'est pas une zone mais un clignement
+  mergeGapMeters: 800,  // deux zones plus proches que ça n'en font qu'une
+};
+
+function classify(elev, delta) {
+  if (elev < T.minElev) return { level: 'none', score: 0 };
+  const a = Math.abs(delta);
+  if (elev <= T.high.maxElev && a <= T.high.maxDelta) {
+    return { level: 'high', score: 100 - a * 2 - Math.abs(elev - 4) * 3 };
+  }
+  if (elev <= T.moderate.maxElev && a <= T.moderate.maxDelta) {
+    return { level: 'moderate', score: 70 - a - Math.abs(elev - 8) * 2 };
+  }
+  if (elev <= T.low.maxElev && a <= T.low.maxDelta) {
+    return { level: 'low', score: 40 - a * 0.5 };
+  }
+  return { level: 'none', score: 0 };
+}
+
+const RANK = { none: 0, low: 1, moderate: 2, high: 3 };
+const LABEL = { low: 'Faible', moderate: 'Modéré', high: 'Élevé' };
+
+/* ═══════════════════════════════════════════════════════════
+   4. ANALYSE D'UN TRAJET
+   ═══════════════════════════════════════════════════════════ */
+function analyze(route, departureMs) {
+  const { coords, cum, cumTime } = route;
+  const samples = [];
+
+  for (let i = 0; i < coords.length; i++) {
+    // Cap calculé sur une fenêtre de 60 m : les lacets ne doivent pas
+    // faire osciller le résultat d'un point à l'autre.
+    let j = i;
+    while (j < coords.length - 1 && cum[j] - cum[i] < 60) j++;
+    if (j === i) j = Math.max(0, i - 1);
+    const [aLat, aLng] = i <= j ? coords[i] : coords[j];
+    const [bLat, bLng] = i <= j ? coords[j] : coords[i];
+    if (aLat === bLat && aLng === bLng) { samples.push(null); continue; }
+
+    const head = bearing(aLat, aLng, bLat, bLng);
+    const at = departureMs + cumTime[i] * 1000;
+    const sun = solar(at, coords[i][0], coords[i][1]);
+    const delta = signedDelta(head, sun.azimuth);
+    const c = classify(sun.elevation, delta);
+    samples.push({
+      i, at, lat: coords[i][0], lng: coords[i][1],
+      head, elev: sun.elevation, az: sun.azimuth, delta,
+      level: c.level, score: Math.max(0, c.score),
+      d: cum[i], t: cumTime[i],
+    });
+  }
+
+  // Regroupement en zones
+  const raw = [];
+  let cur = null;
+  for (const s of samples) {
+    if (!s) continue;
+    if (s.level !== 'none') {
+      if (!cur) cur = { pts: [s] };
+      else cur.pts.push(s);
+    } else if (cur) { raw.push(cur); cur = null; }
+  }
+  if (cur) raw.push(cur);
+
+  // Fusion des zones proches, puis filtrage des trop courtes
+  const merged = [];
+  for (const z of raw) {
+    const last = merged[merged.length - 1];
+    if (last && z.pts[0].d - last.pts[last.pts.length - 1].d < T.mergeGapMeters) {
+      last.pts.push(...z.pts);
+    } else merged.push(z);
+  }
+
+  const zones = merged.map((z) => {
+    const pts = z.pts;
+    let worst = pts[0];
+    for (const p of pts) if (p.score > worst.score) worst = p;
+    const first = pts[0], last = pts[pts.length - 1];
+    const len = Math.max(last.d - first.d, 120);
+    return {
+      level: pts.reduce((m, p) => RANK[p.level] > RANK[m] ? p.level : m, 'none'),
+      side: Math.abs(worst.delta) <= T.high.maxDelta ? 'face'
+          : worst.delta < 0 ? 'gauche' : 'droite',
+      startD: first.d, endD: first.d + len, length: len,
+      startAt: first.at, endAt: last.at,
+      seconds: Math.max(last.t - first.t, 10),
+      elev: worst.elev, delta: worst.delta, score: worst.score,
+      announced: false,
+    };
+  }).filter((z) => z.length >= T.minZoneMeters);
+
+  const exposedM = zones.reduce((a, z) => a + z.length, 0);
+  const exposedS = zones.reduce((a, z) => a + z.seconds, 0);
+  const highest = zones.reduce((m, z) => RANK[z.level] > RANK[m] ? z.level : m, 'none');
+
+  return { samples: samples.filter(Boolean), zones, exposedM, exposedS, highest, departureMs };
+}
+
+/** Rejoue l'analyse sur une fenêtre d'heures de départ. Zéro appel réseau. */
+function bestDeparture(route, preferredMs, windowMin = 90, stepMin = 10) {
+  const out = [];
+  for (let s = -windowMin; s <= windowMin; s += stepMin) {
+    const r = analyze(route, preferredMs + s * 60000);
+    out.push({ shift: s, exposedS: r.exposedS, highest: r.highest, zones: r.zones.length });
+  }
+  const ref = out.find((o) => o.shift === 0);
+  const better = out
+    .filter((o) => ref.exposedS - o.exposedS >= 60)
+    .sort((a, b) => a.exposedS - b.exposedS || Math.abs(a.shift) - Math.abs(b.shift));
+  return { ref, best: better[0] || null };
+}
+
+/* ═══════════════════════════════════════════════════════════
+   5. RÉSEAU — adresses et itinéraire, sans clé ni compte
+   ═══════════════════════════════════════════════════════════ */
+async function geocode(q) {
+  const u = `https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=fr&q=${encodeURIComponent(q)}`;
+  const r = await fetch(u, { headers: { Accept: 'application/json' } });
+  if (!r.ok) throw new Error('Recherche d\u2019adresse indisponible.');
+  return (await r.json()).map((x) => ({
+    label: x.display_name, lat: +x.lat, lng: +x.lon,
+  }));
+}
+
+async function fetchRoute(a, b) {
+  const u = `https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}`
+          + `?overview=full&geometries=geojson&annotations=duration`;
+  const r = await fetch(u);
+  if (!r.ok) throw new Error('Calcul d\u2019itinéraire indisponible.');
+  const j = await r.json();
+  if (j.code !== 'Ok' || !j.routes?.length) throw new Error('Aucun itinéraire routier entre ces deux points.');
+
+  const g = j.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+  const durs = j.routes[0].legs[0].annotation?.duration || [];
+  const cum = [0], cumTime = [0];
+  for (let i = 1; i < g.length; i++) {
+    cum.push(cum[i - 1] + dist(g[i - 1][0], g[i - 1][1], g[i][0], g[i][1]));
+    cumTime.push(cumTime[i - 1] + (durs[i - 1] ?? 0));
+  }
+  // Sécurité : si OSRM n'a pas renvoyé les durées, on répartit proportionnellement.
+  if (!durs.length && j.routes[0].duration) {
+    const total = cum[cum.length - 1] || 1;
+    for (let i = 0; i < cum.length; i++) cumTime[i] = j.routes[0].duration * cum[i] / total;
+  }
+  return { coords: g, cum, cumTime,
+    totalM: j.routes[0].distance, totalS: j.routes[0].duration };
+}
+
+/* ═══════════════════════════════════════════════════════════
+   6. INTERFACE
+   ═══════════════════════════════════════════════════════════ */
+const $ = (id) => document.getElementById(id);
+const state = { from: null, to: null, route: null, result: null, watch: null,
+                audio: null, wake: null, sim: null, swReg: null };
+
+function fmtTime(ms) {
+  return new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
+function fmtKm(m) { return m >= 1000 ? (m / 1000).toFixed(1) : (Math.round(m / 50) * 50) + ' m'; }
+function log(msg) {
+  const l = $('log');
+  if (l.dataset.clean !== '1') { l.innerHTML = ''; l.dataset.clean = '1'; }
+  const li = document.createElement('li');
+  li.innerHTML = `<div class="zt"><b>${fmtTime(Date.now())}</b><span>${msg}</span></div>`;
+  l.prepend(li);
+}
+
+/* ---- autocomplétion d'adresse ---- */
+function wireSuggest(inputId, listId, key) {
+  const input = $(inputId), list = $(listId);
+  let timer = null;
+  input.addEventListener('input', () => {
+    state[key] = null;
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 3) { list.classList.add('hide'); return; }
+    // Nominatim demande au plus une requête par seconde.
+    timer = setTimeout(async () => {
+      try {
+        const res = await geocode(q);
+        list.innerHTML = '';
+        if (!res.length) { list.classList.add('hide'); return; }
+        for (const r of res) {
+          const li = document.createElement('li');
+          li.textContent = r.label;
+          li.onclick = () => {
+            state[key] = r; input.value = r.label.split(',').slice(0, 3).join(',');
+            list.classList.add('hide');
+          };
+          list.appendChild(li);
+        }
+        list.classList.remove('hide');
+      } catch { list.classList.add('hide'); }
+    }, 900);
+  });
+}
+wireSuggest('from', 'sugFrom', 'from');
+wireSuggest('to', 'sugTo', 'to');
+
+/* ---- « ma position » ---- */
+$('from').addEventListener('focus', () => {
+  if ($('from').value) return;
+  navigator.geolocation?.getCurrentPosition((p) => {
+    if ($('from').value) return;
+    state.from = { lat: p.coords.latitude, lng: p.coords.longitude, label: 'Ma position' };
+    $('from').value = 'Ma position';
+  }, () => {}, { enableHighAccuracy: true, timeout: 8000 });
+});
+
+/* ---- valeurs par défaut : maintenant ---- */
+(function initDateTime() {
+  const n = new Date();
+  $('date').value = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+  $('time').value = `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
+})();
+
+/* ---- analyse ---- */
+$('analyze').onclick = async () => {
+  const btn = $('analyze'), err = $('err');
+  err.classList.add('hide');
+  if (!state.from || !state.to) {
+    err.textContent = 'Choisissez un départ et une arrivée dans la liste proposée.';
+    err.classList.remove('hide'); return;
+  }
+  btn.disabled = true; btn.textContent = 'Calcul en cours…';
+  try {
+    state.route = await fetchRoute(state.from, state.to);
+    const dep = new Date(`${$('date').value}T${$('time').value}`).getTime();
+    state.result = analyze(state.route, dep);
+    state.advice = bestDeparture(state.route, dep);
+    render();
+    $('setup').classList.add('hide');
+    $('result').classList.remove('hide');
+    window.scrollTo(0, 0);
+  } catch (e) {
+    err.textContent = e.message || 'Le calcul a échoué. Réessayez dans un instant.';
+    err.classList.remove('hide');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Analyser le trajet';
+  }
+};
+
+$('back').onclick = () => {
+  $('result').classList.add('hide'); $('setup').classList.remove('hide');
+};
+
+/* ---- rendu ---- */
+function render() {
+  const r = state.result;
+  const v = $('verdict');
+  v.className = 'verdict ' + r.highest;
+
+  const titles = {
+    none: 'Aucun éblouissement prévu',
+    low: 'Gêne légère possible',
+    moderate: 'Éblouissement modéré',
+    high: 'Éblouissement fort',
+  };
+  const texts = {
+    none: 'Le soleil ne sera jamais dans l\u2019axe sur ce trajet, à cette heure.',
+    low: 'Le soleil sera bas mais assez décalé de votre trajectoire.',
+    moderate: 'Le soleil viendra dans votre champ de vision. Pare-soleil et distance de sécurité.',
+    high: 'Le soleil sera bas et pratiquement dans l\u2019axe de la route. Envisagez de décaler votre départ.',
+  };
+  $('vTitle').textContent = titles[r.highest];
+  $('vText').textContent = texts[r.highest];
+  $('sDist').textContent = (r.exposedM / 1000).toFixed(1);
+  $('sTime').textContent = Math.round(r.exposedS / 60);
+  $('sZones').textContent = r.zones.length;
+
+  // Conseil d'heure de départ
+  const a = state.advice;
+  if (a.best) {
+    const shifted = r.departureMs + a.best.shift * 60000;
+    $('aText').innerHTML = `Partez à <em>${fmtTime(shifted)}</em> plutôt que ${fmtTime(r.departureMs)}`;
+    const saved = Math.round((a.ref.exposedS - a.best.exposedS) / 60);
+    const sign = a.best.shift > 0 ? '+' : '';
+    $('aSub').textContent = `${sign}${a.best.shift} min de décalage, ${saved} min d\u2019exposition en moins`
+      + (a.best.exposedS === 0 ? ' — plus aucune zone.' : '.');
+    $('advice').classList.remove('hide');
+  } else $('advice').classList.add('hide');
+
+  // Liste des zones
+  const list = $('zoneList');
+  list.innerHTML = '';
+  if (!r.zones.length) {
+    list.innerHTML = '<li><div class="zt"><span>Rien à signaler sur ce trajet.</span></div></li>';
+  }
+  for (const z of r.zones) {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="dot ${z.level}"></span>
+      <div class="zt"><b>Soleil ${z.side === 'face' ? 'de face' : 'à ' + z.side}
+        — ${LABEL[z.level].toLowerCase()}</b>
+      <span>à ${fmtKm(z.startD)} du départ, sur ${fmtKm(z.length)}</span></div>
+      <div class="zk">${fmtTime(z.startAt)}<br>${Math.round(z.elev)}° / ${Math.round(Math.abs(z.delta))}°</div>`;
+    list.appendChild(li);
+  }
+
+  drawGlass(r.zones.length ? worstSample(r) : r.samples[Math.floor(r.samples.length / 2)]);
+}
+
+function worstSample(r) {
+  return r.samples.reduce((m, s) => s.score > (m?.score ?? -1) ? s : m, null) || r.samples[0];
+}
+
+/* ---- le pare-brise ---- */
+function drawGlass(s) {
+  const svg = $('glassSvg');
+  if (!s) { svg.innerHTML = ''; return; }
+  const W = 400, H = 210, cx = W / 2, horizon = 150;
+  // 60° de champ de vision de part et d'autre ; 30° d'élévation en hauteur.
+  const px = (deg) => cx + (deg / 60) * (W / 2 - 20);
+  const py = (elev) => horizon - (elev / 30) * (horizon - 25);
+  const sunX = px(Math.max(-70, Math.min(70, s.delta)));
+  const sunY = py(Math.max(-3, Math.min(32, s.elev)));
+  const visible = Math.abs(s.delta) <= 68;
+  const cone = (d, c, o) => `<path d="M${cx} ${horizon} L${px(-d)} 20 L${px(d)} 20 Z" fill="${c}" opacity="${o}"/>`;
+
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#1E2A38"/><stop offset="100%" stop-color="#2E3A46"/>
+      </linearGradient>
+      <radialGradient id="halo">
+        <stop offset="0%" stop-color="#FFB43A" stop-opacity=".55"/>
+        <stop offset="100%" stop-color="#FFB43A" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <rect width="${W}" height="${horizon}" fill="url(#sky)"/>
+    <rect y="${horizon}" width="${W}" height="${H - horizon}" fill="#0E1319"/>
+    ${cone(T.low.maxDelta, '#7FA8C9', .10)}
+    ${cone(T.moderate.maxDelta, '#FFB43A', .12)}
+    ${cone(T.high.maxDelta, '#FF6A2B', .16)}
+    <line x1="0" y1="${horizon}" x2="${W}" y2="${horizon}" stroke="#7FA8C9" stroke-width="1.5" opacity=".7"/>
+    <path d="M${cx - 8} ${horizon} L${cx - 60} ${H} M${cx + 8} ${horizon} L${cx + 60} ${H}"
+          stroke="#3A4552" stroke-width="2"/>
+    <line x1="${cx}" y1="${horizon - 6}" x2="${cx}" y2="${horizon + 6}" stroke="#74839A" stroke-width="1"/>
+    ${visible ? `<circle cx="${sunX}" cy="${sunY}" r="46" fill="url(#halo)"/>
+      <circle cx="${sunX}" cy="${sunY}" r="13" fill="#FFD584"/>
+      <circle cx="${sunX}" cy="${sunY}" r="13" fill="none" stroke="#FFB43A" stroke-width="2"/>`
+    : `<text x="${cx}" y="70" fill="#74839A" font-family="monospace" font-size="12"
+         text-anchor="middle">soleil hors du champ de vision</text>`}
+  `;
+  $('glassVal').textContent = `${Math.round(s.elev)}° au-dessus · ${Math.round(Math.abs(s.delta))}° ${
+    Math.abs(s.delta) <= T.high.maxDelta ? 'dans l\u2019axe' : s.delta < 0 ? 'à gauche' : 'à droite'}`;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   7. SUIVI ET ALERTES
+   ═══════════════════════════════════════════════════════════ */
+const LEAD_SECONDS = 120;      // on prévient deux minutes avant
+const MIN_LEAD_SECONDS = 15;   // en deçà, il est trop tard : on se tait
+const MAX_ALERTS = 4;
+const COOLDOWN_MS = 180000;
+let alertCount = 0, lastAlertMs = 0;
+
+function speak(text) {
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'fr-FR'; u.rate = 1.05; u.volume = 1;
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  } catch {}
+}
+
+async function notify(title, body) {
+  try {
+    if (state.swReg && Notification.permission === 'granted') {
+      await state.swReg.showNotification(title, {
+        body, icon: 'icon.svg', badge: 'icon.svg',
+        vibrate: [140, 70, 140], tag: 'glare', renotify: true,
+        requireInteraction: false,
+      });
+    }
+  } catch {}
+}
+
+/** Phrase courte : au-delà de ~3,5 s, elle empiète sur le GPS. */
+function phrase(zone, secondsAhead) {
+  const min = Math.max(1, Math.round(secondsAhead / 60));
+  const where = zone.side === 'face' ? 'Soleil de face'
+              : zone.side === 'gauche' ? 'Soleil à gauche' : 'Soleil à droite';
+  const during = zone.length >= 1000
+    ? `${Math.round(zone.length / 1000)} kilomètre${zone.length >= 2000 ? 's' : ''}`
+    : `${Math.round(zone.length / 100) * 100} mètres`;
+  return `${where} dans ${min} minute${min > 1 ? 's' : ''}, ${during}.`;
+}
+
+function fireAlert(zone, secondsAhead) {
+  const now = Date.now();
+  if (zone.announced) return;
+  if (RANK[zone.level] < RANK.moderate) return;      // le faible reste visuel
+  if (alertCount >= MAX_ALERTS) return;
+  if (now - lastAlertMs < COOLDOWN_MS) return;
+  if (secondsAhead < MIN_LEAD_SECONDS) return;
+
+  zone.announced = true; alertCount++; lastAlertMs = now;
+  const text = phrase(zone, secondsAhead);
+  speak(text);
+  notify('Éblouissement à venir', text);
+  log(`Annonce ${alertCount}/${MAX_ALERTS} — « ${text} »`);
+}
+
+/** Projette une position sur l'itinéraire : distance parcourue et écart latéral. */
+function project(lat, lng) {
+  const { coords, cum } = state.route;
+  let best = { d: Infinity, i: 0 };
+  for (let i = 0; i < coords.length; i++) {
+    const d = dist(lat, lng, coords[i][0], coords[i][1]);
+    if (d < best.d) best = { d, i };
+  }
+  return { along: cum[best.i], lateral: best.d, i: best.i };
+}
+
+function onPosition(lat, lng, speedMps) {
+  const p = project(lat, lng);
+  const zones = state.result.zones;
+
+  if (p.lateral > 250) {
+    $('lBig').textContent = 'Hors itinéraire';
+    $('lSub').innerHTML = `<span class="pulse"></span>À ${fmtKm(p.lateral)} du trajet analysé`;
+    return;
+  }
+
+  const next = zones.find((z) => z.endD > p.along);
+  if (!next) {
+    $('lBig').textContent = 'Plus rien devant';
+    $('lSub').innerHTML = `<span class="pulse"></span>${fmtKm(state.route.totalM - p.along)} restants`;
+    return;
+  }
+
+  const gap = Math.max(0, next.startD - p.along);
+  const v = speedMps && speedMps > 3 ? speedMps : 13.9;   // 50 km/h par défaut
+  const secs = gap / v;
+
+  if (gap === 0) {
+    $('lBig').textContent = `Soleil ${next.side === 'face' ? 'de face' : 'à ' + next.side}`;
+    $('lSub').innerHTML = `<span class="pulse"></span>Vous y êtes — encore ${fmtKm(next.endD - p.along)}`;
+  } else {
+    $('lBig').textContent = fmtKm(gap);
+    $('lSub').innerHTML = `<span class="pulse"></span>avant « soleil ${
+      next.side === 'face' ? 'de face' : 'à ' + next.side}` +
+      ` », dans ${Math.round(secs / 60)} min`;
+  }
+
+  if (secs <= LEAD_SECONDS) fireAlert(next, secs);
+  renderLiveZones(p.along);
+}
+
+function renderLiveZones(along) {
+  const l = $('liveZones');
+  l.innerHTML = '';
+  for (const z of state.result.zones) {
+    const done = z.endD <= along;
+    const li = document.createElement('li');
+    li.style.opacity = done ? '.35' : '1';
+    li.innerHTML = `<span class="dot ${z.level}"></span>
+      <div class="zt"><b>Soleil ${z.side === 'face' ? 'de face' : 'à ' + z.side}</b>
+      <span>${done ? 'passée' : 'dans ' + fmtKm(Math.max(0, z.startD - along))}</span></div>
+      <div class="zk">${z.announced ? 'annoncée' : ''}</div>`;
+    l.appendChild(li);
+  }
+}
+
+/* ---- garder la page vivante quand Waze passe devant ----
+   Android suspend une page en arrière-plan. Un flux audio silencieux
+   la maintient éveillée. C'est un contournement, pas une solution propre —
+   l'application native le fera correctement. */
+function keepAlive() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    gain.gain.value = 0.0001;
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start();
+    state.audio = { ctx, osc };
+  } catch {}
+  navigator.wakeLock?.request('screen').then((w) => { state.wake = w; }).catch(() => {});
+}
+
+function releaseAlive() {
+  try { state.audio?.osc.stop(); state.audio?.ctx.close(); } catch {}
+  try { state.wake?.release(); } catch {}
+  state.audio = state.wake = null;
+}
+
+/* ---- démarrage du suivi ---- */
+$('start').onclick = async () => {
+  const btn = $('start');
+  btn.disabled = true; btn.textContent = 'Autorisations…';
+
+  if ('Notification' in window && Notification.permission === 'default') {
+    try { await Notification.requestPermission(); } catch {}
+  }
+  // Une première parole déclenchée par le geste de l'utilisateur débloque
+  // la synthèse vocale pour tout le reste du trajet.
+  speak('Suivi activé.');
+
+  alertCount = 0; lastAlertMs = 0;
+  for (const z of state.result.zones) z.announced = false;
+
+  keepAlive();
+  state.watch = navigator.geolocation.watchPosition(
+    (p) => onPosition(p.coords.latitude, p.coords.longitude, p.coords.speed),
+    (e) => log('GPS : ' + (e.message || 'position indisponible')),
+    { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 },
+  );
+
+  $('result').classList.add('hide');
+  $('tracking').classList.remove('hide');
+  renderLiveZones(0);
+  log('Suivi démarré. ' + state.result.zones.length + ' zone(s) surveillée(s).');
+  btn.disabled = false; btn.textContent = 'Démarrer le suivi, puis ouvrir le GPS';
+  window.scrollTo(0, 0);
+};
+
+$('stopTrack').onclick = () => {
+  if (state.watch != null) navigator.geolocation.clearWatch(state.watch);
+  if (state.sim) { clearInterval(state.sim); state.sim = null; }
+  state.watch = null;
+  releaseAlive();
+  $('tracking').classList.add('hide');
+  $('result').classList.remove('hide');
+  log('Suivi arrêté.');
+};
+
+$('openWaze').onclick = () => {
+  const t = state.to;
+  location.href = `https://waze.com/ul?ll=${t.lat},${t.lng}&navigate=yes`;
+};
+$('openMaps').onclick = () => {
+  const t = state.to;
+  location.href = `https://www.google.com/maps/dir/?api=1&destination=${t.lat},${t.lng}&travelmode=driving`;
+};
+
+/* ---- simulation : parcourt le trajet en accéléré, sans bouger ---- */
+$('sim').onclick = () => {
+  alertCount = 0; lastAlertMs = 0;
+  for (const z of state.result.zones) z.announced = false;
+  $('result').classList.add('hide');
+  $('tracking').classList.remove('hide');
+  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
+  speak('Simulation en cours.');
+  log('Simulation : le trajet défile en accéléré.');
+
+  const { coords, cum } = state.route;
+  let idx = 0;
+  const totalSteps = coords.length;
+  state.sim = setInterval(() => {
+    if (idx >= totalSteps) { clearInterval(state.sim); state.sim = null; log('Simulation terminée.'); return; }
+    const [lat, lng] = coords[idx];
+    // On force le cooldown à zéro en simulation, sinon une seule zone parle.
+    lastAlertMs = 0;
+    onPosition(lat, lng, 16);
+    idx += Math.max(1, Math.round(totalSteps / 120));
+  }, 250);
+};
+
+/* ---- service worker ---- */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js')
+    .then((r) => { state.swReg = r; })
+    .catch(() => log('Notifications indisponibles (le site doit être servi en HTTPS).'));
+}
+</script>
+</body>
+</html>

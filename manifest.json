@@ -1,0 +1,12 @@
+{
+  "name": "Éblouissement — anticipation solaire",
+  "short_name": "Éblouissement",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#10151B",
+  "theme_color": "#10151B",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
