@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10151B">
+<title>Route Conformance Gate — Radius</title>
+<style>
+:root{
+  --bg:#10151B; --surface:#151C25; --panel:#19202A; --edge:#29323E;
+  --ink:#E8EDF3; --mute:#8494AB; --faint:#5D6B80;
+  --pass:#199E70; --revoir:#FFB43A; --fail:#E66767; --info:#3987E5;
+  --disp:'IBM Plex Sans Condensed',system-ui,-apple-system,sans-serif;
+  --body:system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,monospace;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);
+  font-size:16px;line-height:1.5}
+body{padding:0 0 max(36px,env(safe-area-inset-bottom))}
+.wrap{max-width:620px;margin:0 auto;padding:0 16px}
+
+.tech{background:var(--fail);color:#1A0808;font-family:var(--mono);font-size:10.5px;
+  letter-spacing:.14em;text-transform:uppercase;font-weight:700;text-align:center;
+  padding:9px 12px;line-height:1.4}
+header{padding:20px 0 12px}
+h1{font-family:var(--disp);font-weight:700;font-size:25px;margin:0 0 6px;line-height:1.15}
+.sub{color:var(--mute);font-size:14px;margin:0}
+
+h2{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--mute);font-weight:400;margin:24px 0 11px;padding-top:17px;
+  border-top:1px solid var(--edge)}
+
+.box{background:var(--panel);border:1px solid var(--edge);border-radius:10px;
+  padding:14px;margin-bottom:12px;font-size:13.5px}
+.box.warn{border-color:rgba(255,180,58,.4);background:rgba(255,180,58,.07)}
+.box.bad{border-color:rgba(230,103,103,.45);background:rgba(230,103,103,.08)}
+.box.good{border-color:rgba(25,158,112,.45);background:rgba(25,158,112,.08)}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:12.5px}
+.kv span:first-child{color:var(--mute)}
+.kv span:last-child{font-family:var(--mono);text-align:right}
+
+button{font-family:var(--body);font-size:14px;border:1px solid var(--edge);border-radius:9px;
+  background:var(--panel);color:var(--ink);padding:11px 13px;cursor:pointer}
+button:active{opacity:.7}
+button:disabled{opacity:.35;cursor:default}
+button:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+button.primary{background:var(--info);border-color:var(--info);color:#06111F;font-weight:650;
+  font-family:var(--disp);font-size:16px;padding:15px;width:100%}
+button.stop{background:transparent;border-color:var(--fail);color:var(--fail);width:100%;padding:13px}
+.mini{font-size:12px;padding:8px 10px}
+.rowbtn{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+
+.prog{height:5px;background:var(--surface);border-radius:3px;overflow:hidden;margin:11px 0 6px}
+.prog i{display:block;height:100%;background:var(--info);width:0;border-radius:0 3px 3px 0;
+  transition:width .2s ease}
+.progtxt{font-family:var(--mono);font-size:11.5px;color:var(--mute)}
+
+.case{border:1px solid var(--edge);border-left-width:3px;border-radius:9px;
+  background:var(--panel);margin-bottom:9px;overflow:hidden}
+.case.PASS{border-left-color:var(--pass)}
+.case.REVOIR{border-left-color:var(--revoir)}
+.case.FAIL{border-left-color:var(--fail)}
+.case.attente{border-left-color:var(--edge)}
+.case.encours{border-left-color:var(--info)}
+.case > summary{padding:12px 13px;cursor:pointer;list-style:none;display:flex;
+  justify-content:space-between;gap:10px;align-items:baseline}
+.case > summary::-webkit-details-marker{display:none}
+.case .nm{font-size:13.5px;font-weight:600}
+.case .zone{display:block;font-family:var(--mono);font-size:10.5px;color:var(--faint);
+  letter-spacing:.06em;text-transform:uppercase;margin-top:2px;font-weight:400}
+.tag{font-family:var(--mono);font-size:10px;letter-spacing:.1em;padding:3px 7px;border-radius:4px;
+  flex:none;white-space:nowrap}
+.tag.PASS{background:rgba(25,158,112,.16);color:var(--pass)}
+.tag.REVOIR{background:rgba(255,180,58,.16);color:var(--revoir)}
+.tag.FAIL{background:rgba(230,103,103,.16);color:var(--fail)}
+.tag.attente{background:var(--surface);color:var(--faint)}
+.tag.encours{background:rgba(57,135,229,.16);color:var(--info)}
+.detail{padding:0 13px 13px;border-top:1px solid var(--edge);margin-top:2px;padding-top:11px}
+.grp{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--faint);margin:12px 0 5px}
+.grp:first-child{margin-top:0}
+.why{font-size:12.5px;color:var(--mute);line-height:1.5;margin:9px 0 0;
+  padding:9px 11px;background:var(--surface);border-radius:7px}
+.ok{color:var(--pass)}.no{color:var(--fail)}.mid{color:var(--revoir)}
+
+.summary{background:var(--panel);border:1px solid var(--edge);border-radius:11px;padding:16px}
+.big{font-family:var(--disp);font-size:34px;font-weight:700;line-height:1;margin:2px 0 4px}
+.counts{display:flex;gap:8px;margin:14px 0 4px}
+.counts div{flex:1;background:var(--surface);border-radius:8px;padding:10px 8px;text-align:center}
+.counts b{display:block;font-family:var(--mono);font-size:19px;font-weight:500}
+.counts span{font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--mute)}
+.verdict{border-radius:10px;padding:15px;margin-top:13px;text-align:center;border:1px solid var(--edge)}
+.verdict .v{font-family:var(--disp);font-size:19px;font-weight:700}
+.verdict.ok{border-color:rgba(25,158,112,.5);background:rgba(25,158,112,.1)}
+.verdict.ok .v{color:var(--pass)}
+.verdict.ko{border-color:rgba(230,103,103,.5);background:rgba(230,103,103,.1)}
+.verdict.ko .v{color:var(--fail)}
+
+input,textarea{background:var(--surface);border:1px solid var(--edge);color:var(--ink);
+  font-family:var(--mono);font-size:14px;padding:10px;border-radius:8px;width:100%}
+input:focus,textarea:focus{outline:none;border-color:var(--info)}
+label{display:block;font-size:12.5px;color:var(--mute);margin:9px 0 5px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.thr{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;
+  font-size:12.5px;padding:6px 0;border-bottom:1px solid var(--edge)}
+.thr:last-child{border-bottom:none}
+.thr input{width:88px;text-align:right;padding:7px;font-size:13px}
+
+details.doc{border-top:1px solid var(--edge);padding-top:13px;margin-top:22px}
+details.doc summary{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--mute);cursor:pointer;padding:4px 0}
+details.doc p,details.doc li{font-size:13px;color:var(--mute);line-height:1.6}
+details.doc h4{font-size:13.5px;color:var(--ink);margin:15px 0 6px;font-weight:600}
+details.doc code{font-family:var(--mono);font-size:12px;color:var(--ink);
+  background:var(--surface);padding:1px 5px;border-radius:4px}
+details.doc ul{padding-left:19px}
+footer{margin-top:24px;padding-top:15px;border-top:1px solid var(--edge);
+  font-family:var(--mono);font-size:10.5px;color:var(--faint);line-height:1.7}
+</style>
+</head>
+<body>
+
+<div class="tech">Outil technique — pas une fonction produit</div>
+
+<div class="wrap">
+<header>
+  <h1>Route Conformance Gate</h1>
+  <p class="sub">La route analysée par Radius est-elle fidèle à celle que Google Routes
+    lui a renvoyée&nbsp;? Mesures, pas impressions.</p>
+</header>
+
+<h2>Code de production testé</h2>
+<div class="box" id="prov">Chargement de <code>index.html</code>…</div>
+
+<h2>Seuils</h2>
+<div class="box" id="seuils"></div>
+
+<h2>Exécution</h2>
+<button class="primary" id="run" type="button">Lancer les 20 tests</button>
+<button class="stop hide" id="stop" type="button" style="display:none;margin-top:9px">Arrêter</button>
+<div class="prog"><i id="progbar"></i></div>
+<div class="progtxt" id="progtxt">Prêt. Les requêtes partent une par une.</div>
+
+<h2>Résultat global</h2>
+<div class="summary" id="global"></div>
+
+<h2>Cas de test</h2>
+<div id="cases"></div>
+
+<h2>Trajet personnalisé</h2>
+<div class="box">
+  <div class="two">
+    <div><label for="aLat">Départ — latitude</label><input id="aLat" value="-20.88231"></div>
+    <div><label for="aLng">Départ — longitude</label><input id="aLng" value="55.45042"></div>
+    <div><label for="bLat">Arrivée — latitude</label><input id="bLat" value="-21.00874"></div>
+    <div><label for="bLng">Arrivée — longitude</label><input id="bLng" value="55.26501"></div>
+  </div>
+  <div class="rowbtn"><button class="mini" id="runCustom" type="button">Tester ce trajet</button></div>
+  <div id="customOut"></div>
+</div>
+
+<h2>Contrôle visuel Maps — secondaire</h2>
+<div class="box">
+  <p style="margin:0 0 10px;font-size:13px;color:var(--mute)">
+    Facultatif, et volontairement minimal : relever la distance et la durée affichées
+    par Maps pour quelques trajets, rien de plus. Aucune comparaison visuelle de tracé
+    n'est demandée.</p>
+  <div id="spot"></div>
+</div>
+
+<h2>Export</h2>
+<button class="mini" id="export" type="button" style="width:100%">Exporter le rapport JSON</button>
+
+<details class="doc" open>
+  <summary>Ce que ce test prouve, et ce qu'il ne prouve pas</summary>
+  <div class="box good" style="margin-top:11px">
+    <strong>A — ce que le test automatique établit.</strong><br>
+    Que Radius n'altère pas la géométrie que Google Routes lui renvoie : chaque point
+    analysé se trouve sur la polyline Google, dans l'ordre, du départ à l'arrivée, et
+    la distance parcourue est celle de Google.
+  </div>
+  <div class="box warn">
+    <strong>B — ce qu'il n'établit pas.</strong><br>
+    Que l'application Google Maps affichera exactement la même polyline au même instant.
+    Maps recalcule pour son propre compte, avec son propre trafic, et aucune API publique
+    n'expose la polyline interne de son interface. Le bouton « Ouvrir dans Google Maps »
+    transmet les mêmes coordonnées A/B — il ne récupère rien en retour.
+  </div>
+  <div id="docModele"></div>
+</details>
+
+<footer>
+  Route Conformance Gate — outil de vérification interne.<br>
+  Aucune clé d'API dans cette page. Tous les appels passent par <code>/api/route</code>.
+</footer>
+</div>
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════════
+   1. GÉOMÉTRIE DE MESURE
+   Indépendante de celle de Radius : c'est un instrument de mesure,
+   il ne doit pas hériter d'un éventuel défaut de l'objet mesuré.
+   ═══════════════════════════════════════════════════════════ */
+const RAD = Math.PI / 180, TERRE = 6371008.8;
+
+function haversine(aLat, aLng, bLat, bLng) {
+  const dLat = (bLat - aLat) * RAD, dLng = (bLng - aLng) * RAD;
+  const s = Math.sin(dLat / 2) ** 2
+    + Math.cos(aLat * RAD) * Math.cos(bLat * RAD) * Math.sin(dLng / 2) ** 2;
+  return 2 * TERRE * Math.asin(Math.min(1, Math.sqrt(s)));
+}
+
+function longueur(pts) {
+  let L = 0;
+  for (let i = 1; i < pts.length; i++) L += haversine(pts[i-1][0], pts[i-1][1], pts[i][0], pts[i][1]);
+  return L;
+}
+
+/** Projection locale en mètres autour d'une origine. Aux échelles en jeu —
+    segments de quelques centaines de mètres — l'erreur est très inférieure au
+    centimètre, donc négligeable devant un seuil de 10 m. */
+function versMetres(lat, lng, lat0, lng0) {
+  return [ (lng - lng0) * Math.cos(lat0 * RAD) * RAD * TERRE, (lat - lat0) * RAD * TERRE ];
+}
+
+/** Distance d'un point à UN segment, et position relative t sur ce segment.
+    Point → segment, pas point → sommet : Radius rééchantillonne, ses points ne
+    coïncident donc jamais avec les sommets de Google. */
+function pointSegment(p, a, b) {
+  const [px, py] = versMetres(p[0], p[1], a[0], a[1]);
+  const [bx, by] = versMetres(b[0], b[1], a[0], a[1]);
+  const L2 = bx * bx + by * by;
+  if (L2 < 1e-12) return { d: Math.hypot(px, py), t: 0 };
+  let t = (px * bx + py * by) / L2;
+  t = Math.max(0, Math.min(1, t));
+  return { d: Math.hypot(px - t * bx, py - t * by), t };
+}
+
+/** Distance d'un point à une polyline entière, avec la position curviligne
+    atteinte. Balayage monotone autour du dernier indice — les deux tracés
+    suivent la même route — avec repli en balayage complet dès que le minimum
+    local paraît suspect, pour ne jamais rater une vraie divergence. */
+function pointPolyline(p, poly, cumPoly, indice, fenetre) {
+  const scan = (deb, fin) => {
+    let best = { d: Infinity, i: deb, t: 0 };
+    for (let i = deb; i < fin; i++) {
+      const r = pointSegment(p, poly[i], poly[i + 1]);
+      if (r.d < best.d) best = { d: r.d, i, t: r.t };
+    }
+    return best;
+  };
+  const n = poly.length - 1;
+  let best;
+  if (indice === null) best = scan(0, n);
+  else {
+    best = scan(Math.max(0, indice - fenetre), Math.min(n, indice + fenetre));
+    if (best.d > 50) best = scan(0, n);      // doute : on rebalaie tout
+  }
+  const s = cumPoly[best.i] + best.t * (cumPoly[best.i + 1] - cumPoly[best.i]);
+  return { d: best.d, i: best.i, s };
+}
+
+function cumules(pts) {
+  const c = [0];
+  for (let i = 1; i < pts.length; i++) c.push(c[i-1] + haversine(pts[i-1][0], pts[i-1][1], pts[i][0], pts[i][1]));
+  return c;
+}
+
+function percentile(tri, p) {
+  if (!tri.length) return 0;
+  const i = Math.min(tri.length - 1, Math.max(0, Math.ceil(p / 100 * tri.length) - 1));
+  return tri[i];
+}
+
+/** Écarts d'une série de points vers une polyline : max, médiane, P95,
+    plus la suite des positions curvilignes pour contrôler l'ordre. */
+function ecarts(points, poly, cumPoly) {
+  const ds = [], ss = [];
+  let idx = null;
+  for (const p of points) {
+    const r = pointPolyline(p, poly, cumPoly, idx, 60);
+    ds.push(r.d); ss.push(r.s); idx = r.i;
+  }
+  const tri = [...ds].sort((x, y) => x - y);
+  return { max: tri.length ? tri[tri.length-1] : 0, med: percentile(tri, 50),
+           p95: percentile(tri, 95), positions: ss };
+}
+
+/** Inversions de l'ordre départ → arrivée. Une tolérance absorbe le bruit de
+    projection ; au-delà, c'est un vrai retour en arrière. */
+function inversions(positions, tolerance) {
+  let n = 0, recul = 0;
+  for (let i = 1; i < positions.length; i++) {
+    const delta = positions[i] - positions[i-1];
+    if (delta < -tolerance) { n++; recul = Math.max(recul, -delta); }
+  }
+  return { n, recul };
+}
+
+/* ═══════════════════════════════════════════════════════════
+   2. LE CODE DE PRODUCTION, EXTRAIT DE index.html
+   Dupliquer resample() ici rendrait le test aveugle au jour où la
+   production changerait. On lit donc le fichier réellement servi et
+   on en extrait la source des fonctions à tester.
+   ═══════════════════════════════════════════════════════════ */
+const PROD = { ok: false, source: '', empreinte: '', fns: null, erreur: null };
+
+function empreinte(txt) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < txt.length; i++) { h ^= txt.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h.toString(16).padStart(8, '0');
+}
+
+function extraireBloc(src, nom) {
+  const re = new RegExp('^(?:async )?function ' + nom + '\\s*\\(', 'm');
+  const m = re.exec(src);
+  if (!m) throw new Error('fonction introuvable : ' + nom);
+  const reste = src.slice(m.index);
+  const fin = /^\}$/m.exec(reste);
+  if (!fin) throw new Error('fin de fonction introuvable : ' + nom);
+  return reste.slice(0, fin.index + fin[0].length);
+}
+
+async function chargerProduction() {
+  try {
+    const r = await fetch('index.html', { cache: 'no-store' });
+    if (!r.ok) throw new Error('index.html inaccessible (' + r.status + ')');
+    const html = await r.text();
+    const i = html.indexOf('<script>'), j = html.lastIndexOf('<\/script>');
+    if (i < 0 || j < 0) throw new Error('script introuvable dans index.html');
+    const js = html.slice(i + 8, j);
+
+    const step = /^const STEP_METERS = (\d+);/m.exec(js);
+    if (!step) throw new Error('STEP_METERS introuvable');
+    const morceaux = [
+      'const R = Math.PI / 180, D = 180 / Math.PI;',
+      'const EARTH = 6371008.8;',
+      'const STEP_METERS = ' + step[1] + ';',
+      extraireBloc(js, 'dist'),
+      extraireBloc(js, 'resample'),
+      extraireBloc(js, 'routeGoogleVersTimeline'),
+      'return { dist, resample, routeGoogleVersTimeline, STEP_METERS };',
+    ];
+    const src = morceaux.join('\n\n');
+    PROD.fns = new Function(src)();
+    PROD.source = src;
+    PROD.empreinte = empreinte(js);
+    PROD.stepMeters = +step[1];
+    PROD.ok = true;
+  } catch (e) {
+    PROD.erreur = e.message;
+  }
+  rendreProvenance();
+}
+
+function rendreProvenance() {
+  const el = document.getElementById('prov');
+  if (!PROD.ok) {
+    el.className = 'box bad';
+    el.innerHTML = `<strong>Extraction impossible — aucun test ne peut être lancé.</strong><br>
+      <span style="color:var(--mute);font-size:12.5px">${PROD.erreur}</span><br>
+      <span style="color:var(--mute);font-size:12.5px">Ce test refuse de dupliquer
+      l'algorithme : une copie pourrait diverger de la production sans qu'on le voie.</span>`;
+    document.getElementById('run').disabled = true;
+    document.getElementById('runCustom').disabled = true;
+    return;
+  }
+  el.className = 'box good';
+  el.innerHTML = `<strong>Fonctions de production chargées depuis <code>index.html</code>.</strong>
+    <div class="kv"><span>Empreinte du script servi</span><span>${PROD.empreinte}</span></div>
+    <div class="kv"><span>Fonctions extraites</span><span>dist · resample · routeGoogleVersTimeline</span></div>
+    <div class="kv"><span>Pas de rééchantillonnage</span><span>${PROD.stepMeters} m</span></div>
+    <div class="kv"><span>Source mesurée</span><span>${PROD.source.length} caractères</span></div>
+    <p style="margin:9px 0 0;font-size:12.5px;color:var(--mute)">Aucune copie de
+    l'algorithme n'est faite ici : c'est le code réellement servi qui est exécuté.</p>`;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   3. SEUILS
+   ═══════════════════════════════════════════════════════════ */
+const SEUILS = {
+  extremites:      { v: 1,    u: 'm',  t: 'Écart maximal aux extrémités Google' },
+  avantP95:        { v: 10,   u: 'm',  t: 'P95 Radius → polyline Google (PASS)' },
+  avantP95Revoir:  { v: 30,   u: 'm',  t: 'P95 Radius → polyline Google (À REVOIR)' },
+  avantMax:        { v: 30,   u: 'm',  t: 'Écart maximal Radius → Google (PASS)' },
+  arriereP95:      { v: 15,   u: 'm',  t: 'P95 Google → polyline Radius (PASS)' },
+  arriereP95Revoir:{ v: 40,   u: 'm',  t: 'P95 Google → polyline Radius (À REVOIR)' },
+  arcPct:          { v: 0.5,  u: '%',  t: 'Écart de distance curviligne (PASS)' },
+  arcPctRevoir:    { v: 1.0,  u: '%',  t: 'Écart de distance curviligne (À REVOIR)' },
+  reculMax:        { v: 5,    u: 'm',  t: 'Recul toléré avant de compter une inversion' },
+  sautMax:         { v: 150,  u: 'm',  t: 'Saut maximal entre deux points analysés' },
+  snapInfo:        { v: 250,  u: 'm',  t: 'Raccrochage signalé au-delà de' },
+  polyVsDist:      { v: 3,    u: '%',  t: 'Polyline Google vs distanceMeters Google' },
+};
+
+function rendreSeuils() {
+  document.getElementById('seuils').innerHTML = Object.entries(SEUILS).map(([k, s]) =>
+    `<div class="thr"><span>${s.t}</span>
+      <input type="number" step="0.1" data-seuil="${k}" value="${s.v}"> </div>`).join('')
+    + `<p style="margin:10px 0 0;font-size:12.5px;color:var(--mute)">Ces seuils mesurent
+       l'<strong>intégrité de la transformation</strong>, pas la précision d'un GPS.</p>`;
+  document.getElementById('seuils').addEventListener('input', (e) => {
+    const k = e.target.dataset.seuil;
+    if (k) SEUILS[k].v = parseFloat(e.target.value);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   4. CAS DE TEST — coordonnées en dur, aucun géocodage
+   ═══════════════════════════════════════════════════════════ */
+const CAS = [
+  { z:'La Réunion', n:'Saint-Denis urbain', a:[-20.87340,55.44790], b:[-20.90670,55.47830] },
+  { z:'La Réunion', n:'Route du Littoral', a:[-20.89490,55.42120], b:[-20.92560,55.33580] },
+  { z:'La Réunion', n:'Saint-Louis → Cilaos (montagne)', a:[-21.28610,55.41140], b:[-21.13500,55.47140] },
+  { z:'La Réunion', n:'Saint-Pierre, trajet court', a:[-21.33930,55.47810], b:[-21.34750,55.49000] },
+  { z:'La Réunion', n:'Saint-Denis → Saint-Philippe (long)', a:[-20.88230,55.45040], b:[-21.36060,55.76860] },
+  { z:'La Réunion', n:'Saint-Paul → Saint-Gilles', a:[-21.00960,55.27070], b:[-21.05780,55.22620] },
+  { z:'La Réunion', n:'Le Tampon → Saint-Pierre', a:[-21.27830,55.51530], b:[-21.33930,55.47810] },
+  { z:'Métropole', n:'Paris urbain', a:[48.85830,2.34700], b:[48.88090,2.35530] },
+  { z:'Métropole', n:'Paris → Versailles (banlieue)', a:[48.84170,2.29860], b:[48.80140,2.13010] },
+  { z:'Métropole', n:'Lyon → Saint-Étienne (autoroute)', a:[45.76400,4.83570], b:[45.43970,4.38720] },
+  { z:'Métropole', n:'Bourges → Nevers (départementale)', a:[47.08100,2.39880], b:[46.98960,3.15900] },
+  { z:'Métropole', n:'Paris → Orléans (interurbain)', a:[48.85660,2.35220], b:[47.90290,1.90930] },
+  { z:'Métropole', n:'Marseille → Aix-en-Provence', a:[43.29650,5.36980], b:[43.52970,5.44740] },
+  { z:'Métropole', n:'Bordeaux → Arcachon', a:[44.83780,-0.57920], b:[44.65800,-1.16800] },
+  { z:'Métropole', n:'Lille → Roubaix', a:[50.62920,3.05730], b:[50.69420,3.17460] },
+  { z:'International', n:'Londres → Heathrow', a:[51.50800,-0.12810], b:[51.47000,-0.45430] },
+  { z:'International', n:'Munich → Salzbourg (autoroute)', a:[48.13510,11.58200], b:[47.80950,13.05500] },
+  { z:'International', n:'Manhattan, trajet court', a:[40.75800,-73.98550], b:[40.78290,-73.96540] },
+  { z:'International', n:'Madrid → Valence (long)', a:[40.41680,-3.70380], b:[39.46990,-0.37630] },
+  { z:'International', n:'Los Angeles → Santa Monica', a:[34.05220,-118.24370], b:[34.01950,-118.49120] },
+];
+
+const urlMaps = (a, b) => 'https://www.google.com/maps/dir/?api=1'
+  + `&origin=${a[0]},${a[1]}&destination=${b[0]},${b[1]}&travelmode=driving`;
+
+/* ═══════════════════════════════════════════════════════════
+   5. LE TEST DE CONFORMITÉ
+   ═══════════════════════════════════════════════════════════ */
+
+/** La référence est la géométrie que Radius CONSOMME réellement, c'est-à-dire
+    la concaténation des polylines d'étapes. `geometry` (polyline de la route
+    entière) ne sert à Radius que de repli structurel : la comparer serait
+    comparer Radius à une géométrie qu'il n'utilise pas. */
+function referenceGoogle(rep) {
+  const steps = Array.isArray(rep.steps) ? rep.steps : [];
+  if (steps.length) {
+    const out = [];
+    for (const s of steps) {
+      for (const p of (s.coordinates || [])) {
+        const der = out[out.length - 1];
+        if (!der || der[0] !== p[0] || der[1] !== p[1]) out.push([p[0], p[1]]);
+      }
+    }
+    if (out.length >= 2) return { pts: out, source: 'steps' };
+  }
+  const g = (rep.geometry || []).map((p) => [p[0], p[1]]);
+  return { pts: g, source: 'geometry (repli)' };
+}
+
+function conformite(rep, A, B) {
+  const S = Object.fromEntries(Object.entries(SEUILS).map(([k, v]) => [k, v.v]));
+  const m = { erreurs: [], notes: [] };
+
+  // ---- B. contrat de la réponse ----
+  m.provider = rep.provider;
+  m.routingPreference = rep.routingPreference;
+  m.distanceMeters = Number(rep.distanceMeters) || 0;
+  m.durationSeconds = Number(rep.durationSeconds) || 0;
+  m.staticDurationSeconds = Number(rep.staticDurationSeconds) || 0;
+  m.trafficFactor = Number(rep.trafficFactor) || 0;
+  if (rep.provider !== 'google-routes') m.erreurs.push('provider = ' + rep.provider);
+  if (rep.routingPreference !== 'TRAFFIC_AWARE_OPTIMAL') m.erreurs.push('routingPreference = ' + rep.routingPreference);
+  if (!(m.distanceMeters > 0)) m.erreurs.push('distanceMeters nulle');
+  if (!(m.durationSeconds > 0)) m.erreurs.push('durationSeconds nulle');
+  if (!(m.staticDurationSeconds > 0)) m.erreurs.push('staticDurationSeconds nulle');
+  if (!(m.trafficFactor > 0.2 && m.trafficFactor < 5)) m.erreurs.push('trafficFactor implausible : ' + m.trafficFactor);
+
+  const ref = referenceGoogle(rep);
+  m.refSource = ref.source;
+  if (ref.pts.length < 2) { m.erreurs.push('géométrie Google absente'); m.verdict = 'FAIL'; return m; }
+
+  // ---- D. polyline Google brute ----
+  m.googlePts = ref.pts.length;
+  m.googleLen = longueur(ref.pts);
+  m.polyVsDist = m.distanceMeters > 0
+    ? (m.googleLen - m.distanceMeters) / m.distanceMeters * 100 : 0;
+
+  // ---- C. raccrochage ----
+  m.snapA = haversine(A[0], A[1], ref.pts[0][0], ref.pts[0][1]);
+  m.snapB = haversine(B[0], B[1], ref.pts[ref.pts.length-1][0], ref.pts[ref.pts.length-1][1]);
+
+  // ---- E. route réellement analysée ----
+  let radius;
+  try { radius = PROD.fns.routeGoogleVersTimeline(rep); }
+  catch (e) { m.erreurs.push('transformation Radius en échec : ' + e.message); m.verdict = 'FAIL'; return m; }
+  m.radiusPts = radius.coords.length;
+  m.radiusChordLen = longueur(radius.coords);
+  m.radiusArcLen = radius.cum[radius.cum.length - 1];
+
+  // Distance curviligne : c'est elle qui pilote les zones et le préavis.
+  m.arcPct = m.googleLen > 0 ? Math.abs(m.radiusArcLen - m.googleLen) / m.googleLen * 100 : 0;
+  // Longueur de la ligne brisée Radius : plus courte dès qu'il y a de la courbure.
+  m.chordPct = m.googleLen > 0 ? (m.radiusChordLen - m.googleLen) / m.googleLen * 100 : 0;
+
+  // Régularité du rééchantillonnage. Après resample(), la distance curviligne
+  // avance d'un pas constant. Un saut plus grand signifie que des points
+  // manquent — une portion du trajet ne serait jamais analysée. Sur une route
+  // droite, une portion supprimée est géométriquement invisible : la corde qui
+  // comble le trou suit la même droite. Seule cette mesure-là la voit.
+  m.pasAttendu = PROD.stepMeters;
+  m.sautMax = 0;
+  for (let i = 1; i < radius.cum.length; i++) {
+    m.sautMax = Math.max(m.sautMax, radius.cum[i] - radius.cum[i-1]);
+  }
+  m.ptsAttendus = Math.floor(m.googleLen / PROD.stepMeters) + 2;
+
+  const cumG = cumules(ref.pts), cumR = cumules(radius.coords);
+
+  // Sens aller : chaque point analysé est-il sur la route Google ?
+  const av = ecarts(radius.coords, ref.pts, cumG);
+  m.avantMax = av.max; m.avantMed = av.med; m.avantP95 = av.p95;
+
+  // Sens retour : la route Google est-elle couverte ? C'est ce sens qui révèle
+  // une portion manquante ou un virage coupé — l'aller ne peut pas les voir.
+  const ar = ecarts(ref.pts, radius.coords, cumR);
+  m.arriereMax = ar.max; m.arriereMed = ar.med; m.arriereP95 = ar.p95;
+
+  // Ordre départ → arrivée.
+  const inv = inversions(av.positions, S.reculMax);
+  m.inversions = inv.n; m.reculMax = inv.recul;
+
+  // Extrémités.
+  m.extA = haversine(ref.pts[0][0], ref.pts[0][1], radius.coords[0][0], radius.coords[0][1]);
+  const dG = ref.pts[ref.pts.length-1], dR = radius.coords[radius.coords.length-1];
+  m.extB = haversine(dG[0], dG[1], dR[0], dR[1]);
+
+  // ---- verdict ----
+  const dur = [];
+  if (m.erreurs.length) dur.push('contrat de réponse');
+  if (m.extA > S.extremites || m.extB > S.extremites) dur.push('extrémités déplacées');
+  if (m.inversions > 0) dur.push(m.inversions + ' inversion(s) d\'ordre');
+  if (m.avantP95 > S.avantP95Revoir || m.avantMax > S.avantP95Revoir * 3) dur.push('points hors de la route Google');
+  if (m.arcPct > S.arcPctRevoir) dur.push('distance curviligne divergente');
+  if (m.arriereP95 > S.arriereP95Revoir) dur.push('couverture de la route incomplète');
+  if (m.sautMax > S.sautMax) dur.push('trou de ' + Math.round(m.sautMax) + ' m entre deux points analysés');
+
+  const revoir = [];
+  if (m.avantP95 > S.avantP95) revoir.push('P95 aller ' + m.avantP95.toFixed(1) + ' m');
+  if (m.avantMax > S.avantMax) revoir.push('écart max aller ' + m.avantMax.toFixed(1) + ' m');
+  if (m.arcPct > S.arcPct) revoir.push('distance curviligne ' + m.arcPct.toFixed(2) + ' %');
+  if (m.arriereP95 > S.arriereP95) revoir.push('P95 retour ' + m.arriereP95.toFixed(1) + ' m');
+  if (Math.abs(m.polyVsDist) > S.polyVsDist) revoir.push('polyline vs distanceMeters ' + m.polyVsDist.toFixed(1) + ' %');
+
+  m.verdict = dur.length ? 'FAIL' : revoir.length ? 'REVOIR' : 'PASS';
+  m.causes = dur.length ? dur : revoir;
+
+  // Explication : un écart retour sans écart aller n'est pas un changement de
+  // route, c'est la corde du rééchantillonnage qui coupe les virages.
+  if (!dur.length && m.arriereP95 > S.arriereP95 && m.avantP95 <= S.avantP95) {
+    m.notes.push('Écart visible uniquement dans le sens retour, avec un aller quasi nul : '
+      + 'signature du rééchantillonnage à ' + PROD.stepMeters + ' m qui relie deux points '
+      + 'par une corde. Les points analysés restent sur la route Google ; c\'est la ligne '
+      + 'brisée qui coupe les virages. Ce n\'est pas un changement d\'itinéraire.');
+  }
+  if (Math.abs(m.snapA) > S.snapInfo || Math.abs(m.snapB) > S.snapInfo) {
+    m.notes.push('Raccrochage Google marqué (' + m.snapA.toFixed(0) + ' m / ' + m.snapB.toFixed(0)
+      + ' m) : le point demandé était loin d\'une route carrossable. Sans effet sur la conformité.');
+  }
+  return m;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   6. EXÉCUTION ET RENDU
+   ═══════════════════════════════════════════════════════════ */
+const $ = (id) => document.getElementById(id);
+const etat = { resultats: new Array(CAS.length).fill(null), enCours: false, stop: false,
+               demarre: null, spot: {} };
+
+async function appelRoute(A, B, signal) {
+  const r = await fetch('/api/route', {
+    method: 'POST', signal,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ origin: { lat: A[0], lng: A[1] },
+                           destination: { lat: B[0], lng: B[1] },
+                           departureMs: Date.now() + 3600000 }),
+  });
+  let j = null;
+  try { j = await r.json(); } catch {}
+  if (!r.ok) throw new Error(j?.error || ('HTTP ' + r.status));
+  return j;
+}
+
+function ligneCas(i) {
+  const c = CAS[i], res = etat.resultats[i];
+  const st = res ? res.verdict : (etat.enCours && etat.courant === i ? 'encours' : 'attente');
+  const libelle = { PASS:'PASS', REVOIR:'À REVOIR', FAIL:'FAIL', attente:'—', encours:'…' }[st];
+  let detail = '';
+  if (res && res.erreurFatale) {
+    detail = `<div class="detail"><div class="why no">Requête en échec : ${res.erreurFatale}</div></div>`;
+  } else if (res) {
+    const m = res;
+    const f = (v, d = 1) => (v === undefined || v === null || !Number.isFinite(v)) ? '—' : v.toFixed(d);
+    detail = `<div class="detail">
+      <div class="grp">Réponse Google</div>
+      <div class="kv"><span>provider · routingPreference</span><span>${m.provider} · ${m.routingPreference}</span></div>
+      <div class="kv"><span>distance · durée trafic · statique</span><span>${(m.distanceMeters/1000).toFixed(2)} km · ${Math.round(m.durationSeconds/60)} min · ${Math.round(m.staticDurationSeconds/60)} min</span></div>
+      <div class="kv"><span>trafficFactor</span><span>${f(m.trafficFactor,3)}</span></div>
+      <div class="grp">Raccrochage des extrémités</div>
+      <div class="kv"><span>A demandé → premier point</span><span>${f(m.snapA)} m</span></div>
+      <div class="kv"><span>B demandé → dernier point</span><span>${f(m.snapB)} m</span></div>
+      <div class="grp">Polyline Google brute (${m.refSource})</div>
+      <div class="kv"><span>points · longueur géodésique</span><span>${m.googlePts} · ${(m.googleLen/1000).toFixed(3)} km</span></div>
+      <div class="kv"><span>écart vs distanceMeters</span><span class="${Math.abs(m.polyVsDist)>SEUILS.polyVsDist.v?'mid':''}">${f(m.polyVsDist,2)} %</span></div>
+      <div class="grp">Route réellement analysée par Radius</div>
+      <div class="kv"><span>points après rééchantillonnage</span><span>${m.radiusPts} (attendus ~${m.ptsAttendus})</span></div>
+      <div class="kv"><span>saut maximal entre deux points</span><span class="${m.sautMax>SEUILS.sautMax.v?'no':'ok'}">${f(m.sautMax)} m — pas ${m.pasAttendu} m</span></div>
+      <div class="kv"><span>distance curviligne</span><span>${(m.radiusArcLen/1000).toFixed(3)} km</span></div>
+      <div class="kv"><span>écart de distance curviligne</span><span class="${m.arcPct>SEUILS.arcPct.v?'mid':'ok'}">${f(m.arcPct,3)} %</span></div>
+      <div class="kv"><span>longueur de la ligne brisée</span><span>${(m.radiusChordLen/1000).toFixed(3)} km (${f(m.chordPct,2)} %)</span></div>
+      <div class="grp">Radius → polyline Google (point vers segment)</div>
+      <div class="kv"><span>médiane · P95 · max</span><span class="${m.avantP95>SEUILS.avantP95.v?'mid':'ok'}">${f(m.avantMed,2)} · ${f(m.avantP95,2)} · ${f(m.avantMax,2)} m</span></div>
+      <div class="grp">Google → polyline Radius (couverture)</div>
+      <div class="kv"><span>médiane · P95 · max</span><span class="${m.arriereP95>SEUILS.arriereP95.v?'mid':'ok'}">${f(m.arriereMed,2)} · ${f(m.arriereP95,2)} · ${f(m.arriereMax,2)} m</span></div>
+      <div class="grp">Ordre</div>
+      <div class="kv"><span>inversions · recul max</span><span class="${m.inversions?'no':'ok'}">${m.inversions} · ${f(m.reculMax)} m</span></div>
+      <div class="kv"><span>extrémités conservées</span><span class="${(m.extA>SEUILS.extremites.v||m.extB>SEUILS.extremites.v)?'no':'ok'}">${f(m.extA,2)} m · ${f(m.extB,2)} m</span></div>
+      ${m.causes && m.causes.length ? `<div class="why">${res.verdict === 'FAIL' ? 'Échec' : 'À revoir'} : ${m.causes.join(' · ')}</div>` : ''}
+      ${(m.notes||[]).map((t) => `<div class="why">${t}</div>`).join('')}
+      <div class="rowbtn">
+        <button class="mini" onclick="window.open('${urlMaps(c.a, c.b)}','_blank')">Ouvrir dans Google Maps</button>
+      </div>
+    </div>`;
+  } else {
+    detail = `<div class="detail"><div class="kv"><span>A</span><span>${c.a[0]}, ${c.a[1]}</span></div>
+      <div class="kv"><span>B</span><span>${c.b[0]}, ${c.b[1]}</span></div>
+      <div class="rowbtn"><button class="mini" onclick="window.open('${urlMaps(c.a, c.b)}','_blank')">Ouvrir dans Google Maps</button></div></div>`;
+  }
+  return `<details class="case ${st}" ${res && res.verdict !== 'PASS' ? 'open' : ''}>
+    <summary><span class="nm">${c.n}<span class="zone">${c.z}</span></span>
+      <span class="tag ${st}">${libelle}</span></summary>${detail}</details>`;
+}
+
+function rendreCas() { $('cases').innerHTML = CAS.map((_, i) => ligneCas(i)).join(''); }
+
+function rendreGlobal() {
+  const faits = etat.resultats.filter(Boolean);
+  const n = (v) => faits.filter((r) => r.verdict === v).length;
+  const p = n('PASS'), rv = n('REVOIR'), f = n('FAIL');
+  const taux = faits.length ? p / faits.length * 100 : 0;
+  // Une divergence structurelle est un FAIL : aucun taux ne la rachète.
+  const valide = faits.length === CAS.length && f === 0 && taux >= 95;
+  $('global').innerHTML = `
+    <div style="font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+      text-transform:uppercase;color:var(--mute)">Taux de conformité</div>
+    <div class="big">${faits.length ? taux.toFixed(0) + ' %' : '—'}</div>
+    <div style="font-size:13px;color:var(--mute)">${faits.length} / ${CAS.length} trajets mesurés</div>
+    <div class="counts">
+      <div><b class="ok">${p}</b><span>PASS</span></div>
+      <div><b class="mid">${rv}</b><span>À revoir</span></div>
+      <div><b class="no">${f}</b><span>FAIL</span></div>
+    </div>
+    ${faits.length === CAS.length ? `<div class="verdict ${valide ? 'ok' : 'ko'}">
+      <div class="v">${valide ? 'ROUTE PIPELINE VALIDÉ' : 'ROUTE PIPELINE À CORRIGER'}</div></div>` : ''}`;
+}
+
+async function lancerTout() {
+  if (etat.enCours || !PROD.ok) return;
+  etat.enCours = true; etat.stop = false; etat.demarre = new Date().toISOString();
+  etat.resultats = new Array(CAS.length).fill(null);
+  $('run').disabled = true; $('stop').style.display = 'block';
+  const ctrl = new AbortController();
+  etat.abort = () => ctrl.abort();
+
+  for (let i = 0; i < CAS.length; i++) {
+    if (etat.stop) break;
+    etat.courant = i;
+    $('progtxt').textContent = `Trajet ${i + 1} / ${CAS.length} — ${CAS[i].n}`;
+    $('progbar').style.width = (i / CAS.length * 100) + '%';
+    rendreCas();
+    try {
+      const rep = await appelRoute(CAS[i].a, CAS[i].b, ctrl.signal);
+      etat.resultats[i] = conformite(rep, CAS[i].a, CAS[i].b);
+    } catch (e) {
+      if (e.name === 'AbortError') break;
+      etat.resultats[i] = { verdict: 'FAIL', erreurFatale: e.message, causes: ['requête en échec'] };
+    }
+    rendreCas(); rendreGlobal();
+    // Une pause courte : ces appels sont facturés, rien ne presse.
+    if (i < CAS.length - 1 && !etat.stop) await new Promise((r) => setTimeout(r, 350));
+  }
+
+  etat.enCours = false; etat.courant = null;
+  $('progbar').style.width = '100%';
+  $('progtxt').textContent = etat.stop
+    ? `Arrêté. ${etat.resultats.filter(Boolean).length} trajet(s) mesuré(s).`
+    : `Terminé — ${etat.resultats.filter(Boolean).length} trajets mesurés.`;
+  $('run').disabled = false; $('stop').style.display = 'none';
+  rendreCas(); rendreGlobal(); rendreSpot();
+}
+
+$('run').onclick = lancerTout;
+$('stop').onclick = () => { etat.stop = true; if (etat.abort) etat.abort();
+  $('progtxt').textContent = 'Arrêt demandé…'; };
+
+$('runCustom').onclick = async () => {
+  const A = [parseFloat($('aLat').value), parseFloat($('aLng').value)];
+  const B = [parseFloat($('bLat').value), parseFloat($('bLng').value)];
+  const out = $('customOut');
+  if (![...A, ...B].every(Number.isFinite)) { out.innerHTML = '<div class="why no">Coordonnées invalides.</div>'; return; }
+  out.innerHTML = '<div class="why">Appel en cours…</div>';
+  try {
+    const m = conformite(await appelRoute(A, B), A, B);
+    etat.custom = { A, B, m };
+    out.innerHTML = `<div class="why ${m.verdict==='PASS'?'ok':m.verdict==='FAIL'?'no':'mid'}">
+      ${m.verdict} — distance curviligne ${m.arcPct.toFixed(3)} %, P95 aller ${m.avantP95.toFixed(2)} m,
+      P95 retour ${m.arriereP95.toFixed(2)} m, ${m.inversions} inversion(s).</div>`;
+  } catch (e) { out.innerHTML = `<div class="why no">Échec : ${e.message}</div>`; }
+};
+
+/* ---- contrôle visuel Maps, volontairement minimal ---- */
+function rendreSpot() {
+  const choisis = [0, 4, 9, 18].filter((i) => i < CAS.length);
+  $('spot').innerHTML = choisis.map((i) => `
+    <div style="border-top:1px solid var(--edge);padding-top:10px;margin-top:10px">
+      <div style="font-size:13px;font-weight:600">${CAS[i].n}</div>
+      <div class="two" style="margin-top:7px">
+        <div><label>Distance vue dans Maps</label><input data-spot="${i}" data-f="dist" placeholder="km"></div>
+        <div><label>Durée vue dans Maps</label><input data-spot="${i}" data-f="duree" placeholder="min"></div>
+      </div>
+      <div class="rowbtn">
+        <button class="mini" onclick="window.open('${urlMaps(CAS[i].a, CAS[i].b)}','_blank')">Ouvrir</button>
+        <button class="mini" data-spot="${i}" data-f="ok">Cohérent</button>
+        <button class="mini" data-spot="${i}" data-f="ko">Différent</button>
+      </div>
+      <div class="progtxt" data-etat="${i}">${etat.spot[i]?.juge || ''}</div>
+    </div>`).join('');
+}
+$('spot').addEventListener('input', (e) => {
+  const i = e.target.dataset.spot; if (i === undefined) return;
+  etat.spot[i] = etat.spot[i] || {}; etat.spot[i][e.target.dataset.f] = e.target.value;
+});
+$('spot').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-spot]'); if (!b) return;
+  const i = b.dataset.spot;
+  etat.spot[i] = etat.spot[i] || {};
+  etat.spot[i].juge = b.dataset.f === 'ok' ? 'Noté : cohérent' : 'Noté : différent';
+  document.querySelector(`[data-etat="${i}"]`).textContent = etat.spot[i].juge;
+});
+
+/* ---- export ---- */
+$('export').onclick = () => {
+  const faits = etat.resultats.map((r, i) => r ? {
+    nom: CAS[i].n, zone: CAS[i].z, A: CAS[i].a, B: CAS[i].b,
+    urlMaps: urlMaps(CAS[i].a, CAS[i].b), verdict: r.verdict,
+    erreurFatale: r.erreurFatale || null, causes: r.causes || [], notes: r.notes || [],
+    google: r.erreurFatale ? null : {
+      provider: r.provider, routingPreference: r.routingPreference,
+      distanceMeters: r.distanceMeters, durationSeconds: r.durationSeconds,
+      staticDurationSeconds: r.staticDurationSeconds, trafficFactor: r.trafficFactor,
+      polylineSource: r.refSource, polylinePoints: r.googlePts,
+      polylineLengthM: r.googleLen, polylineVsDistancePct: r.polyVsDist,
+      snapDepartM: r.snapA, snapArriveeM: r.snapB,
+    },
+    radius: r.erreurFatale ? null : {
+      points: r.radiusPts, pointsAttendus: r.ptsAttendus,
+      sautMaxM: r.sautMax, pasAttenduM: r.pasAttendu,
+      arcLengthM: r.radiusArcLen, chordLengthM: r.radiusChordLen,
+      arcEcartPct: r.arcPct, chordEcartPct: r.chordPct,
+      allerMedianeM: r.avantMed, allerP95M: r.avantP95, allerMaxM: r.avantMax,
+      retourMedianeM: r.arriereMed, retourP95M: r.arriereP95, retourMaxM: r.arriereMax,
+      inversions: r.inversions, reculMaxM: r.reculMax,
+      extremiteDepartM: r.extA, extremiteArriveeM: r.extB,
+    },
+  } : null).filter(Boolean);
+  const p = faits.filter((x) => x.verdict === 'PASS').length;
+  const rapport = {
+    outil: 'Route Conformance Gate', version: '1.0',
+    horodatage: new Date().toISOString(), demarre: etat.demarre,
+    // Le commit git n'est pas lisible depuis le navigateur : l'empreinte du
+    // script servi identifie sans ambiguïté le code qui a été mesuré.
+    codeTeste: { fichier: 'index.html', empreinteScript: PROD.empreinte,
+                 stepMeters: PROD.stepMeters, commit: null,
+                 note: 'Le commit git n\'est pas accessible côté navigateur ; '
+                     + 'l\'empreinte identifie le script réellement servi.' },
+    seuils: Object.fromEntries(Object.entries(SEUILS).map(([k, s]) => [k, { valeur: s.v, unite: s.u, libelle: s.t }])),
+    resume: { total: CAS.length, mesures: faits.length,
+      pass: p, aRevoir: faits.filter((x) => x.verdict === 'REVOIR').length,
+      fail: faits.filter((x) => x.verdict === 'FAIL').length,
+      tauxPassPct: faits.length ? p / faits.length * 100 : 0 },
+    trajets: faits,
+    controleVisuelMaps: etat.spot,
+    personnalise: etat.custom ? { A: etat.custom.A, B: etat.custom.B, verdict: etat.custom.m.verdict } : null,
+    limites: [
+      'Ce test établit que Radius n\'altère pas la géométrie renvoyée par Google Routes.',
+      'Il n\'établit pas que l\'interface Google Maps affiche la même polyline au même instant : '
+      + 'Maps recalcule pour son compte et aucune API publique n\'expose sa polyline interne.',
+    ],
+  };
+  const b = new Blob([JSON.stringify(rapport, null, 2)], { type: 'application/json' });
+  const u = URL.createObjectURL(b);
+  const a = document.createElement('a');
+  a.href = u; a.download = `route-conformance-${Date.now()}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(u), 2000);
+};
+
+$('docModele').innerHTML = `
+  <h4>Ce qui est mesuré, et pourquoi dans les deux sens</h4>
+  <p><code>resample()</code> interpole entre deux sommets consécutifs de Google : tout
+  point produit tombe donc <em>exactement sur un segment Google</em>. La mesure
+  « point Radius → polyline Google » vaut zéro par construction — prise seule, elle
+  passerait toujours et ne prouverait rien.</p>
+  <p>Le sens retour — « sommet Google → polyline Radius » — est celui qui voit quelque
+  chose : une portion manquante, un virage coupé par la corde de rééchantillonnage.
+  Les deux sont donc mesurés, en point vers segment et non point vers sommet.</p>
+  <h4>Deux longueurs, deux significations</h4>
+  <ul>
+    <li><strong>Distance curviligne</strong> — le <code>cum</code> de Radius. C'est elle
+      qui place les zones et calcule le préavis. Elle doit égaler la longueur de la
+      polyline Google : c'est un critère dur.</li>
+    <li><strong>Longueur de la ligne brisée</strong> — la somme des cordes entre points
+      rééchantillonnés. Elle est <em>structurellement plus courte</em> dès qu'il y a de
+      la courbure, et d'autant plus que la route serpente. Ce n'est pas un défaut :
+      c'est le prix du pas fixe, et il est mesuré, pas caché.</li>
+  </ul>
+  <h4>Sur les seuils proposés</h4>
+  <p>Le seuil « 95 % des points Radius à moins de 10 m de la polyline Google » est
+  conservé mais ne discrimine rien : il est satisfait par construction. Le seuil de
+  longueur à 1 % s'applique ici à la <em>distance curviligne</em>, où il est exigeant
+  et pertinent — l'appliquer à la ligne brisée déclarerait en échec toute route de
+  montagne, pour une raison qui n'est pas un changement d'itinéraire.</p>`;
+
+/* ---- démarrage ---- */
+rendreSeuils(); rendreCas(); rendreGlobal(); rendreSpot();
+chargerProduction();
+</script>
+</body>
+</html>
