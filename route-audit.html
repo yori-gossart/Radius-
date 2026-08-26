@@ -263,6 +263,47 @@ function pointPolyline(p, poly, cumPoly, indice, fenetre) {
   return { d: best.d, i: best.i, s };
 }
 
+/** Écart entre deux caps, dans [0, 180]. 359° et 1° sont à 2° l'un de l'autre. */
+function ecartAngle(a, b) {
+  let d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+/** Fidélité du cap utilisé par Radius.
+    Référence : la tangente locale de la polyline Google détaillée, estimée sur
+    une fenêtre courte (±8 m par défaut). Elle est elle-même une estimation, pas
+    une vérité : la fenêtre de production est volontairement plus large pour
+    absorber le bruit de numérisation des sommets. Un résidu de quelques degrés
+    sur une route sinueuse est donc attendu et correct.
+    L'ancien cap — la corde de 100 m entre points rééchantillonnés — est mesuré
+    en parallèle, pour que le gain soit visible et non postulé. */
+function fideliteCap(radius, fenetreRef) {
+  const { coords, cum, rawCoords, rawCum } = radius;
+  if (!Array.isArray(rawCoords) || !Array.isArray(rawCum) || rawCoords.length < 2) return null;
+  const nouv = [], anc = [];
+  for (let i = 0; i < coords.length; i++) {
+    const ref = PROD.fns.headingAtDistance(rawCoords, rawCum, cum[i], fenetreRef);
+    if (ref === null) continue;
+    const capNouveau = PROD.fns.headingAtDistance(rawCoords, rawCum, cum[i]);
+    if (capNouveau !== null) nouv.push(ecartAngle(capNouveau, ref));
+    // Ancien calcul, reproduit à l'identique : corde vers le point suivant.
+    const j = i < coords.length - 1 ? i + 1 : i;
+    const k = i < coords.length - 1 ? i : Math.max(0, i - 1);
+    const a = coords[k], b = coords[j];
+    if (a[0] !== b[0] || a[1] !== b[1]) anc.push(ecartAngle(PROD.fns.bearing(a[0], a[1], b[0], b[1]), ref));
+  }
+  const stat = (arr) => {
+    if (!arr.length) return null;
+    const t = [...arr].sort((x, y) => x - y);
+    const part = (s) => arr.filter((v) => v > s).length / arr.length * 100;
+    return { n: arr.length, med: percentile(t, 50), p95: percentile(t, 95),
+             max: t[t.length - 1], sup5: part(5), sup10: part(10),
+             sup20: part(20), sup30: part(30) };
+  };
+  return { nouveau: stat(nouv), ancien: stat(anc), fenetreRef,
+           fenetreProd: PROD.capFenetre };
+}
+
 function cumules(pts) {
   const c = [0];
   for (let i = 1; i < pts.length; i++) c.push(c[i-1] + haversine(pts[i-1][0], pts[i-1][1], pts[i][0], pts[i][1]));
@@ -335,20 +376,28 @@ async function chargerProduction() {
 
     const step = /^const STEP_METERS = (\d+);/m.exec(js);
     if (!step) throw new Error('STEP_METERS introuvable');
+    const fen = /^const HEADING_HALF_WINDOW = (\d+);/m.exec(js);
+    if (!fen) throw new Error('HEADING_HALF_WINDOW introuvable — index.html est antérieur au cap local');
     const morceaux = [
       'const R = Math.PI / 180, D = 180 / Math.PI;',
       'const EARTH = 6371008.8;',
       'const STEP_METERS = ' + step[1] + ';',
+      'const HEADING_HALF_WINDOW = ' + fen[1] + ';',
       extraireBloc(js, 'dist'),
+      extraireBloc(js, 'bearing'),
+      extraireBloc(js, 'pointAtDistance'),
+      extraireBloc(js, 'headingAtDistance'),
       extraireBloc(js, 'resample'),
       extraireBloc(js, 'routeGoogleVersTimeline'),
-      'return { dist, resample, routeGoogleVersTimeline, STEP_METERS };',
+      'return { dist, bearing, pointAtDistance, headingAtDistance, resample,'
+        + ' routeGoogleVersTimeline, STEP_METERS, HEADING_HALF_WINDOW };',
     ];
     const src = morceaux.join('\n\n');
     PROD.fns = new Function(src)();
     PROD.source = src;
     PROD.empreinte = empreinte(js);
     PROD.stepMeters = +step[1];
+    PROD.capFenetre = +fen[1];
     PROD.ok = true;
   } catch (e) {
     PROD.erreur = e.message;
@@ -371,8 +420,9 @@ function rendreProvenance() {
   el.className = 'box good';
   el.innerHTML = `<strong>Fonctions de production chargées depuis <code>index.html</code>.</strong>
     <div class="kv"><span>Empreinte du script servi</span><span>${PROD.empreinte}</span></div>
-    <div class="kv"><span>Fonctions extraites</span><span>dist · resample · routeGoogleVersTimeline</span></div>
+    <div class="kv"><span>Fonctions extraites</span><span>dist · bearing · pointAtDistance · headingAtDistance · resample · routeGoogleVersTimeline</span></div>
     <div class="kv"><span>Pas de rééchantillonnage</span><span>${PROD.stepMeters} m</span></div>
+    <div class="kv"><span>Fenêtre du cap local</span><span>±${PROD.capFenetre} m</span></div>
     <div class="kv"><span>Source mesurée</span><span>${PROD.source.length} caractères</span></div>
     <p style="margin:9px 0 0;font-size:12.5px;color:var(--mute)">Aucune copie de
     l'algorithme n'est faite ici : c'est le code réellement servi qui est exécuté.</p>`;
@@ -394,6 +444,9 @@ const SEUILS = {
   sautMax:         { v: 150,  u: 'm',  t: 'Saut maximal entre deux points analysés' },
   snapInfo:        { v: 250,  u: 'm',  t: 'Raccrochage signalé au-delà de' },
   polyVsDist:      { v: 3,    u: '%',  t: 'Polyline Google vs distanceMeters Google' },
+  capP95:          { v: 10,   u: '°',  t: 'P95 de l\'erreur de cap (PASS)' },
+  capP95Revoir:    { v: 20,   u: '°',  t: 'P95 de l\'erreur de cap (À REVOIR)' },
+  capRefFenetre:   { v: 8,    u: 'm',  t: 'Demi-fenêtre de la tangente de référence' },
 };
 
 function rendreSeuils() {
@@ -533,6 +586,11 @@ function conformite(rep, A, B) {
   const inv = inversions(av.positions, S.reculMax);
   m.inversions = inv.n; m.reculMax = inv.recul;
 
+  // Fidélité du cap : c'est le cap, pas la position, qui décide de l'angle au
+  // soleil, donc de la classification.
+  m.cap = fideliteCap(radius, S.capRefFenetre);
+  if (!m.cap) m.notes.push('Géométrie détaillée absente de la timeline : cap non mesurable.');
+
   // Extrémités.
   m.extA = haversine(ref.pts[0][0], ref.pts[0][1], radius.coords[0][0], radius.coords[0][1]);
   const dG = ref.pts[ref.pts.length-1], dR = radius.coords[radius.coords.length-1];
@@ -547,6 +605,9 @@ function conformite(rep, A, B) {
   if (m.arcPct > S.arcPctRevoir) dur.push('distance curviligne divergente');
   if (m.arriereP95 > S.arriereP95Revoir) dur.push('couverture de la route incomplète');
   if (m.sautMax > S.sautMax) dur.push('trou de ' + Math.round(m.sautMax) + ' m entre deux points analysés');
+  if (m.cap && m.cap.nouveau && m.cap.nouveau.p95 > S.capP95Revoir) {
+    dur.push('cap : P95 ' + m.cap.nouveau.p95.toFixed(1) + '°');
+  }
 
   const revoir = [];
   if (m.avantP95 > S.avantP95) revoir.push('P95 aller ' + m.avantP95.toFixed(1) + ' m');
@@ -554,6 +615,7 @@ function conformite(rep, A, B) {
   if (m.arcPct > S.arcPct) revoir.push('distance curviligne ' + m.arcPct.toFixed(2) + ' %');
   if (m.arriereP95 > S.arriereP95) revoir.push('P95 retour ' + m.arriereP95.toFixed(1) + ' m');
   if (Math.abs(m.polyVsDist) > S.polyVsDist) revoir.push('polyline vs distanceMeters ' + m.polyVsDist.toFixed(1) + ' %');
+  if (m.cap && m.cap.nouveau && m.cap.nouveau.p95 > S.capP95) revoir.push('cap P95 ' + m.cap.nouveau.p95.toFixed(1) + '°');
 
   m.verdict = dur.length ? 'FAIL' : revoir.length ? 'REVOIR' : 'PASS';
   m.causes = dur.length ? dur : revoir;
@@ -625,6 +687,17 @@ function ligneCas(i) {
       <div class="kv"><span>médiane · P95 · max</span><span class="${m.avantP95>SEUILS.avantP95.v?'mid':'ok'}">${f(m.avantMed,2)} · ${f(m.avantP95,2)} · ${f(m.avantMax,2)} m</span></div>
       <div class="grp">Google → polyline Radius (couverture)</div>
       <div class="kv"><span>médiane · P95 · max</span><span class="${m.arriereP95>SEUILS.arriereP95.v?'mid':'ok'}">${f(m.arriereMed,2)} · ${f(m.arriereP95,2)} · ${f(m.arriereMax,2)} m</span></div>
+      ${m.cap && m.cap.nouveau ? `
+      <div class="grp">Cap routier — erreur vs tangente Google (±${m.cap.fenetreRef} m)</div>
+      <div class="kv"><span>Radius aujourd'hui (±${m.cap.fenetreProd} m)</span>
+        <span class="${m.cap.nouveau.p95>SEUILS.capP95.v?'mid':'ok'}">méd ${f(m.cap.nouveau.med,1)}° · P95 ${f(m.cap.nouveau.p95,1)}° · max ${f(m.cap.nouveau.max,1)}°</span></div>
+      <div class="kv"><span>&gt;5° · &gt;10° · &gt;20° · &gt;30°</span>
+        <span class="${m.cap.nouveau.sup30>0?'mid':'ok'}">${f(m.cap.nouveau.sup5,1)} % · ${f(m.cap.nouveau.sup10,1)} % · ${f(m.cap.nouveau.sup20,1)} % · ${f(m.cap.nouveau.sup30,1)} %</span></div>
+      ${m.cap.ancien ? `<div class="kv"><span>Ancien cap (corde 100 m), pour comparaison</span>
+        <span class="mid">méd ${f(m.cap.ancien.med,1)}° · P95 ${f(m.cap.ancien.p95,1)}° · max ${f(m.cap.ancien.max,1)}°</span></div>
+      <div class="kv"><span>ancien &gt;10° · &gt;30°</span>
+        <span class="mid">${f(m.cap.ancien.sup10,1)} % · ${f(m.cap.ancien.sup30,1)} %</span></div>` : ''}
+      ` : ''}
       <div class="grp">Ordre</div>
       <div class="kv"><span>inversions · recul max</span><span class="${m.inversions?'no':'ok'}">${m.inversions} · ${f(m.reculMax)} m</span></div>
       <div class="kv"><span>extrémités conservées</span><span class="${(m.extA>SEUILS.extremites.v||m.extB>SEUILS.extremites.v)?'no':'ok'}">${f(m.extA,2)} m · ${f(m.extB,2)} m</span></div>
@@ -773,6 +846,10 @@ $('export').onclick = () => {
       allerMedianeM: r.avantMed, allerP95M: r.avantP95, allerMaxM: r.avantMax,
       retourMedianeM: r.arriereMed, retourP95M: r.arriereP95, retourMaxM: r.arriereMax,
       inversions: r.inversions, reculMaxM: r.reculMax,
+      cap: r.cap ? {
+        fenetreProductionM: r.cap.fenetreProd, fenetreReferenceM: r.cap.fenetreRef,
+        actuel: r.cap.nouveau, ancienCorde100m: r.cap.ancien,
+      } : null,
       extremiteDepartM: r.extA, extremiteArriveeM: r.extB,
     },
   } : null).filter(Boolean);
@@ -827,6 +904,18 @@ $('docModele').innerHTML = `
       la courbure, et d'autant plus que la route serpente. Ce n'est pas un défaut :
       c'est le prix du pas fixe, et il est mesuré, pas caché.</li>
   </ul>
+  <h4>Fidélité du cap</h4>
+  <p>C'est le cap — pas la position — qui décide de l'angle au soleil, donc de la
+  classification. L'ancien calcul prenait la corde entre deux points espacés de
+  100&nbsp;m : elle lisse le virage, et surtout elle va de <code>d</code> à
+  <code>d+100</code>, donc elle donne la tangente à <code>d+50</code>. Ce retard
+  d'un demi-pas vaut 19° d'erreur sur une courbe de 150&nbsp;m de rayon, à comparer
+  aux 12° qui séparent « de face » du reste.</p>
+  <p>La référence est la tangente locale de la polyline Google détaillée, estimée sur
+  une fenêtre courte. Elle reste une estimation : la fenêtre de production est
+  volontairement plus large pour absorber le bruit de numérisation des sommets. Un
+  résidu de quelques degrés sur une route sinueuse est attendu, et correct. L'ancien
+  cap est mesuré en parallèle pour que le gain soit visible plutôt que postulé.</p>
   <h4>Sur les seuils proposés</h4>
   <p>Le seuil « 95 % des points Radius à moins de 10 m de la polyline Google » est
   conservé mais ne discrimine rien : il est satisfait par construction. Le seuil de

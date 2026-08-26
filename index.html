@@ -338,6 +338,41 @@ function signedDelta(heading, target) {
   return d > 180 ? d - 360 : d;
 }
 
+/** Position interpolée à une distance curviligne donnée sur une polyline. */
+function pointAtDistance(coords, cum, d) {
+  const total = cum[cum.length - 1];
+  const t = Math.max(0, Math.min(total, d));
+  let lo = 0, hi = cum.length - 1;
+  while (lo < hi - 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= t) lo = mid; else hi = mid; }
+  const d0 = cum[lo], d1 = cum[hi];
+  const f = d1 > d0 ? (t - d0) / (d1 - d0) : 0;
+  const [la0, lo0] = coords[lo], [la1, lo1] = coords[hi];
+  return [la0 + (la1 - la0) * f, lo0 + (lo1 - lo0) * f];
+}
+
+/* Le cap se lit sur la géométrie Google détaillée, pas sur les points espacés
+   de 100 m. La corde de 100 m avait deux défauts, mesurés : elle lisse le
+   virage, et surtout elle va de d à d+100, donc elle donne la tangente à
+   d+50 — un retard systématique d'un demi-pas. Sur un rayon de 150 m cela
+   fait 19° d'erreur, à comparer aux 12° qui séparent « de face » du reste.
+
+   Fenêtre symétrique de ±20 m, choisie sur mesure et non au jugé : en dessous
+   le bruit de numérisation des sommets domine, au-dessus on ne gagne plus rien
+   et la fenêtre cesse d'être définie dans une épingle courte. */
+const HEADING_HALF_WINDOW = 20;
+
+function headingAtDistance(coords, cum, d, demi = HEADING_HALF_WINDOW) {
+  if (!coords || coords.length < 2 || !cum || cum.length !== coords.length) return null;
+  const total = cum[cum.length - 1];
+  if (!(total > 0)) return null;
+  // Aux extrémités, on n'utilise que la portion disponible.
+  const a = Math.max(0, d - demi), b = Math.min(total, d + demi);
+  if (b - a < 1e-6) return null;
+  const p = pointAtDistance(coords, cum, a), q = pointAtDistance(coords, cum, b);
+  if (p[0] === q[0] && p[1] === q[1]) return null;
+  return bearing(p[0], p[1], q[0], q[1]);
+}
+
 /* ═══════════════════════════════════════════════════════════
    3. CLASSIFICATION DU RISQUE
    Ces seuils sont LE paramètre à calibrer sur le terrain.
@@ -406,20 +441,31 @@ function resample(coords, cum, cumTime, step) {
 }
 
 function analyze(route, departureMs) {
-  const { coords, cum, cumTime } = route;
+  const { coords, cum, cumTime, rawCoords, rawCum } = route;
   const samples = [];
 
-  for (let i = 0; i < coords.length; i++) {
-    // Cap calculé sur une fenêtre de 60 m : les lacets ne doivent pas
-    // faire osciller le résultat d'un point à l'autre.
-    let j = i;
-    while (j < coords.length - 1 && cum[j] - cum[i] < 60) j++;
-    if (j === i) j = Math.max(0, i - 1);
-    const [aLat, aLng] = i <= j ? coords[i] : coords[j];
-    const [bLat, bLng] = i <= j ? coords[j] : coords[i];
-    if (aLat === bLat && aLng === bLng) { samples.push(null); continue; }
+  // La position d'analyse reste tous les 100 m ; seul le cap change de source.
+  const capDetaille = Array.isArray(rawCoords) && Array.isArray(rawCum)
+    && rawCoords.length >= 2 && rawCum.length === rawCoords.length;
+  let repliCap = 0;
 
-    const head = bearing(aLat, aLng, bLat, bLng);
+  for (let i = 0; i < coords.length; i++) {
+    let head = capDetaille ? headingAtDistance(rawCoords, rawCum, cum[i]) : null;
+
+    if (head === null) {
+      // Repli : ancienne corde entre points rééchantillonnés. Il ne doit jamais
+      // se déclencher sur un trajet Google normal, et il est compté pour que le
+      // journal puisse le dire.
+      let j = i;
+      while (j < coords.length - 1 && cum[j] - cum[i] < 60) j++;
+      if (j === i) j = Math.max(0, i - 1);
+      const [aLat, aLng] = i <= j ? coords[i] : coords[j];
+      const [bLat, bLng] = i <= j ? coords[j] : coords[i];
+      if (aLat === bLat && aLng === bLng) { samples.push(null); continue; }
+      head = bearing(aLat, aLng, bLat, bLng);
+      repliCap++;
+    }
+
     const at = departureMs + cumTime[i] * 1000;
     const sun = solar(at, coords[i][0], coords[i][1]);
     const delta = signedDelta(head, sun.azimuth);
@@ -485,7 +531,10 @@ function analyze(route, departureMs) {
   const exposedS = zones.reduce((a, z) => a + z.seconds, 0);
   const highest = zones.reduce((m, z) => RANK[z.level] > RANK[m] ? z.level : m, 'none');
 
-  return { samples: samples.filter(Boolean), zones, exposedM, exposedS, highest, departureMs };
+  return { samples: samples.filter(Boolean), zones, exposedM, exposedS, highest, departureMs,
+    capSource: capDetaille && !repliCap ? 'google-detaille'
+             : capDetaille ? 'google-detaille (avec replis)' : 'reechantillonne (repli)',
+    capRepli: repliCap, capFenetre: HEADING_HALF_WINDOW };
 }
 
 /** Rejoue l'analyse sur une fenêtre d'heures de départ. Zéro appel réseau. */
@@ -596,6 +645,11 @@ function routeGoogleVersTimeline(data) {
 
   return {
     ...sampled,
+    // Géométrie Google détaillée conservée telle quelle, avant rééchantillonnage :
+    // c'est elle qui donne le cap local, qu'une corde de 100 m ne peut pas
+    // restituer dans un virage. Aucun appel réseau supplémentaire.
+    rawCoords: coords,
+    rawCum: cum,
     totalM: Number(data.distanceMeters) || cum[cum.length - 1],
     totalS: Number(data.durationSeconds) || cumTime[cumTime.length - 1],
     staticS: Number(data.staticDurationSeconds) || cumStatic[cumStatic.length - 1],
@@ -766,6 +820,12 @@ $('analyze').onclick = async () => {
       + `${Math.round(rt.staticS / 60)} min hors trafic, `
       + `facteur ${rt.trafficFactor.toFixed(2)}.`);
     log(`Raccrochage Google — départ ${fmtKm(rt.ecartDep)}, arrivée ${fmtKm(rt.ecartArr)}.`);
+    log(`Cap routier — ${state.result.capSource}, fenêtre ±${state.result.capFenetre} m`
+      + `${state.result.capRepli ? `, ${state.result.capRepli} repli(s)` : ''}.`);
+    if (state.result.capSource !== 'google-detaille') {
+      log('Cap replié sur la géométrie rééchantillonnée : les virages seront moins '
+        + 'précis. Cela ne devrait pas arriver sur un trajet Google normal.');
+    }
     if (rt.ecartDep > SNAP_LOG_M || rt.ecartArr > SNAP_LOG_M) {
       log('Écart de raccrochage inhabituel : vérifier que les adresses choisies sont '
         + 'bien au bord d\u2019une route.');
