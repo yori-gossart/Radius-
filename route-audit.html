@@ -273,9 +273,12 @@ function pointPolyline(p, poly, cumPoly, sAttendu, seuilDoute) {
   if (sAttendu === null) best = scan(0, nSeg);
   else {
     const deb = indiceAvant(cumPoly, sAttendu - FENETRE_M);
-    const fin = Math.min(nSeg, indiceAvant(cumPoly, sAttendu + FENETRE_M) + 1);
-    best = scan(deb, Math.max(deb + 1, fin));
-    if (best.d > seuilDoute) best = scan(0, nSeg);
+    const fin = Math.max(deb + 1, Math.min(nSeg, indiceAvant(cumPoly, sAttendu + FENETRE_M) + 1));
+    best = scan(deb, fin);
+    // Deux raisons de rebalayer tout : un écart plus grand qu'attendu, ou un
+    // minimum atteint au bord de la fenêtre — signe qu'elle est mal centrée.
+    const auBord = (best.i <= deb && deb > 0) || (best.i >= fin - 1 && fin < nSeg);
+    if (best.d > seuilDoute || auBord) best = scan(0, nSeg);
   }
   const s = cumPoly[best.i] + best.t * (cumPoly[best.i + 1] - cumPoly[best.i]);
   return { d: best.d, i: best.i, s };
@@ -610,7 +613,7 @@ function conformite(rep, A, B) {
   }
   m.ptsAttendus = Math.floor(m.googleLen / PROD.stepMeters) + 2;
 
-  const cumG = cumules(ref.pts), cumR = cumules(radius.coords);
+  const cumG = cumules(ref.pts);
 
   // Sens aller : chaque point analysé est-il sur la route Google ? La réponse
   // attendue est zéro exactement, donc le moindre écart déclenche un rebalayage.
@@ -619,7 +622,11 @@ function conformite(rep, A, B) {
 
   // Sens retour : la route Google est-elle couverte ? C'est ce sens qui révèle
   // une portion manquante ou un virage coupé — l'aller ne peut pas les voir.
-  const ar = ecarts(ref.pts, cumG, radius.coords, cumR, 120);
+  // radius.cum, et non le cumul des cordes : c'est la distance curviligne le
+  // long de la route Google, donc le même paramétrage que cumG. Les cordes,
+  // elles, dérivent du déficit de rééchantillonnage — jusqu'à plusieurs
+  // kilomètres sur une route de montagne — et décentraient la fenêtre.
+  const ar = ecarts(ref.pts, cumG, radius.coords, radius.cum, 120);
   m.arriereMax = ar.max; m.arriereMed = ar.med; m.arriereP95 = ar.p95;
 
   // Ordre départ → arrivée.
@@ -630,6 +637,25 @@ function conformite(rep, A, B) {
   // soleil, donc de la classification.
   m.cap = fideliteCap(radius, S.capRefFenetre);
   if (!m.cap) m.notes.push('Géométrie détaillée absente de la timeline : cap non mesurable.');
+  if (m.cap && m.cap.nouveau) {
+    const c = m.cap.nouveau;
+    // Sur un trajet court, le P95 est décidé par une poignée de points : il
+    // faut le dire, sinon un verdict repose sur un sample sans qu'on le voie.
+    if (c.n < 100) {
+      const rang = Math.ceil(0.95 * c.n);
+      m.notes.push(`P95 calculé sur ${c.n} samples seulement : c'est la ${rang}\u1d49 valeur, `
+        + `donc ${c.n - rang + 1} point(s) la décident. Sur un trajet court cette statistique `
+        + `est instable — lire aussi le nombre absolu de points au-dessus du seuil.`);
+    }
+    // Le diagnostic qui tranche entre courbure et bruit.
+    const d = m.cap.nouveauSurPortionsDroites;
+    if (d && d.n >= 5 && c.p95 > S.capP95 && d.p95 <= S.capP95) {
+      m.notes.push(`Sur les ${d.n} samples en portion droite (virage <10° dans la fenêtre), `
+        + `le P95 tombe à ${d.p95.toFixed(1)}°, et le virage réel atteint ${m.cap.virageP95.toFixed(0)}° `
+        + `au 95\u1d49 centile. Le résidu est donc de la courbure que la fenêtre lisse, pas du bruit : `
+        + `resserrer la fenêtre échangerait cette courbure contre du bruit de numérisation.`);
+    }
+  }
 
   // Extrémités.
   m.extA = haversine(ref.pts[0][0], ref.pts[0][1], radius.coords[0][0], radius.coords[0][1]);
@@ -731,6 +757,9 @@ function ligneCas(i) {
       <div class="grp">Cap routier — erreur vs tangente Google (±${m.cap.fenetreRef} m)</div>
       <div class="kv"><span>Radius aujourd'hui (±${m.cap.fenetreProd} m)</span>
         <span class="${m.cap.nouveau.p95>SEUILS.capP95.v?'mid':'ok'}">méd ${f(m.cap.nouveau.med,1)}° · P95 ${f(m.cap.nouveau.p95,1)}° · max ${f(m.cap.nouveau.max,1)}°</span></div>
+      <div class="kv"><span>samples mesurés</span><span>${m.cap.nouveau.n}</span></div>
+      <div class="kv"><span>points au-dessus de 20° · de 30°</span>
+        <span class="${m.cap.nouveau.sup20>0?'mid':'ok'}">${Math.round(m.cap.nouveau.sup20/100*m.cap.nouveau.n)} · ${Math.round(m.cap.nouveau.sup30/100*m.cap.nouveau.n)}</span></div>
       <div class="kv"><span>&gt;5° · &gt;10° · &gt;20° · &gt;30°</span>
         <span class="${m.cap.nouveau.sup30>0?'mid':'ok'}">${f(m.cap.nouveau.sup5,1)} % · ${f(m.cap.nouveau.sup10,1)} % · ${f(m.cap.nouveau.sup20,1)} % · ${f(m.cap.nouveau.sup30,1)} %</span></div>
       ${m.cap.nouveauSurPortionsDroites ? `<div class="kv"><span>sur portions droites seules (virage &lt;10°)</span>
