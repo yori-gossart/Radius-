@@ -47,10 +47,22 @@ qui n'existe que pour tenir la clé Google hors du navigateur. Le fondateur
 travaille depuis un téléphone : chaque outil ajouté est une friction réelle.
 Ne pas introduire de bundler, de framework ou de gestionnaire de paquets.
 
-**Le relief n'est pas branché — c'est volontaire.** Le moteur sait masquer un
-soleil caché par une montagne, mais il lui faut des données d'altitude côté
-serveur. Hors périmètre du prototype. Un soleil masqué sera donc annoncé à
-tort : c'est connu, ce n'est pas un bug.
+**Le relief est branché depuis la V0.3 — première couche seulement.** Décision
+du 27 août 2026, qui **remplace** la règle précédente « le relief n'est pas
+branché, c'est volontaire ».
+
+- source : Google Elevation, via `/api/elevation`, même clé serveur ;
+- interrogé **uniquement** au point représentatif des zones déjà détectées,
+  six au maximum, les plus fortes d'abord : une requête par trajet type ;
+- un rayon de douze distances vers l'azimut du soleil, de 100 m à 20 km,
+  avec correction de courbure et de réfraction ;
+- le résultat vit dans `terrainOcclusion`, **à côté** du risque solaire : il ne
+  modifie ni `level`, ni `score`, ni `T`.
+
+Ce qui reste vrai : seul le **terrain naturel** est pris en compte. Ni bâtiments,
+ni végétation. Un soleil caché par un immeuble ou un rideau d'arbres sera encore
+annoncé à tort. La marge `TERRAIN_MARGIN_DEG` est une incertitude numérique, pas
+une valeur calibrée, et ne se mélange jamais à `T`.
 
 **Le maintien en arrière-plan est un contournement assumé.** Un flux audio
 inaudible empêche Android d'endormir la page pendant que Waze est au premier
@@ -119,10 +131,15 @@ phrases prononcées, pas un seuil de détection. Il ne se calibre pas.
 ## Piège de calibration
 
 À La Réunion, le relief coupe le soleil trente à soixante minutes avant
-l'horizon astronomique. Le relief n'est pas branché — c'est un choix assumé,
-pas un oubli. Conséquence directe sur les relevés : **l'observation la plus
-fréquente sera « annoncé mais rien vu », alors que l'annonce était
+l'horizon astronomique. Conséquence directe sur les relevés : **l'observation la
+plus fréquente sera « annoncé mais rien vu », alors que l'annonce était
 astronomiquement juste.**
+
+Depuis la V0.3, `terrainOcclusion` aide à trier : une zone marquée « soleil
+masqué » explique le « rien vu » sans qu'on touche à `T`. Ce n'est pas une
+dispense pour autant — la couche relief ignore bâtiments et végétation,
+échantillonne grossièrement au-delà de dix kilomètres, et son statut peut valoir
+`unknown`. Un « soleil libre » ne prouve donc pas que la gêne était réelle.
 
 Céder à ces relevés-là reviendrait à resserrer `T` pour corriger une erreur que
 `T` n'a pas commise — et à casser le moteur pour la France métropolitaine, qui

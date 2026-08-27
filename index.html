@@ -93,6 +93,11 @@ button:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
 .zt b{font-family:var(--disp);font-size:15px;font-weight:600;display:block}
 .zt span{font-size:13px;color:var(--mute)}
 .zk{font-family:var(--mono);font-size:12px;color:var(--mute);text-align:right;flex:none}
+.relief{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;margin-top:4px}
+.relief.bloq{color:var(--clear)}
+.relief.libre{color:var(--amber)}
+.relief.unk{color:var(--mute)}
+.relief.det{color:var(--mute);letter-spacing:0;margin-top:1px}
 
 /* ---- suivi ---- */
 .live{border:1px solid var(--edge);border-radius:12px;background:var(--panel);
@@ -374,6 +379,93 @@ function headingAtDistance(coords, cum, d, demi = HEADING_HALF_WINDOW) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   2 bis. MASQUAGE PAR LE RELIEF
+   Répond à une seule question, séparément du risque solaire :
+   pour une zone déjà détectée, le terrain naturel cache-t-il le soleil ?
+   Ne touche ni au niveau, ni au score, ni à T.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Distances échantillonnées le long du rayon vers le soleil. Espacement
+   logarithmique : près de l'observateur un morne de trente mètres masque déjà,
+   loin il faut une montagne. Le pas s'élargit donc avec la distance, et une
+   crête étroite au-delà de dix kilomètres peut passer entre deux échantillons —
+   limite assumée de cette première couche. */
+const RELIEF_DISTANCES = [100, 250, 500, 750, 1000, 1500, 2000, 3000, 5000, 7500, 12000, 20000];
+
+/* Marge numérique, pas une valeur calibrée. Elle absorbe l'incertitude du
+   modèle d'altitude et de l'échantillonnage, rien de plus. Elle n'a aucun
+   rapport avec les seuils T et ne doit jamais y être mélangée. */
+const TERRAIN_MARGIN_DEG = 0.5;
+
+/* Rayon terrestre effectif : 7/6 du rayon réel, la valeur standard qui absorbe
+   la réfraction atmosphérique. À vingt kilomètres, courbure et réfraction
+   abaissent l'horizon de vingt-sept mètres, soit 0,077° — sous la marge, mais
+   la correction coûte une ligne, donc on la fait plutôt que de la cacher. */
+const RAYON_EFFECTIF = EARTH * 7 / 6;
+
+/** Point situé à `distance` mètres dans la direction `azimut`. */
+function pointVers(lat, lng, azimut, distance) {
+  const p = lat * R, l = lng * R, b = azimut * R, d = distance / EARTH;
+  const p2 = Math.asin(Math.sin(p) * Math.cos(d) + Math.cos(p) * Math.sin(d) * Math.cos(b));
+  const l2 = l + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(p),
+                            Math.cos(d) - Math.sin(p) * Math.sin(p2));
+  return [p2 * D, ((l2 * D + 540) % 360) - 180];
+}
+
+/** Angle apparent d'un point de terrain vu depuis l'observateur, en degrés. */
+function angleTerrain(altTerrain, altObservateur, distance) {
+  const chute = (distance * distance) / (2 * RAYON_EFFECTIF);
+  return Math.atan2(altTerrain - altObservateur - chute, distance) * D;
+}
+
+/** Décide du masquage à partir des altitudes déjà obtenues.
+    Séparée de l'appel réseau pour être testable sans Google. */
+function occlusionDepuisAltitudes(altObservateur, elevations, sunElevation, distances) {
+  const warnings = [];
+  let maxAngle = -90, dObstacle = null, altObstacle = null, resolutionMax = 0;
+
+  for (let i = 0; i < distances.length; i++) {
+    const e = elevations[i];
+    if (!e || !Number.isFinite(e.elevationM)) { warnings.push(`altitude manquante à ${distances[i]} m`); continue; }
+    if (Number.isFinite(e.resolutionM)) resolutionMax = Math.max(resolutionMax, e.resolutionM);
+    const a = angleTerrain(e.elevationM, altObservateur, distances[i]);
+    if (a > maxAngle) { maxAngle = a; dObstacle = distances[i]; altObstacle = e.elevationM; }
+  }
+
+  if (dObstacle === null) {
+    return { checked: false, status: 'unknown', blocked: null,
+      observerElevationM: altObservateur, maxTerrainAngleDeg: null,
+      sunElevationDeg: sunElevation, blockingDistanceM: null, blockingElevationM: null,
+      provider: 'google-elevation',
+      warnings: warnings.concat('aucune altitude exploitable sur le rayon') };
+  }
+
+  return {
+    checked: true, status: 'ok',
+    blocked: maxAngle > sunElevation + TERRAIN_MARGIN_DEG,
+    observerElevationM: altObservateur,
+    maxTerrainAngleDeg: maxAngle,
+    sunElevationDeg: sunElevation,
+    blockingDistanceM: dObstacle,
+    blockingElevationM: altObstacle,
+    resolutionMaxM: resolutionMax || null,
+    margeDeg: TERRAIN_MARGIN_DEG,
+    provider: 'google-elevation',
+    warnings,
+  };
+}
+
+/** Statut renvoyé quand le relief n'a pas pu être interrogé.
+    Jamais « soleil visible » par défaut : une panne ne doit pas se lire
+    comme une absence de montagne. */
+function occlusionInconnue(raison, sunElevation) {
+  return { checked: false, status: 'unknown', blocked: null,
+    observerElevationM: null, maxTerrainAngleDeg: null,
+    sunElevationDeg: sunElevation ?? null, blockingDistanceM: null,
+    blockingElevationM: null, provider: 'google-elevation', warnings: [raison] };
+}
+
+/* ═══════════════════════════════════════════════════════════
    3. CLASSIFICATION DU RISQUE
    Ces seuils sont LE paramètre à calibrer sur le terrain.
    La littérature situe la gêne sous 20° d'élévation.
@@ -523,6 +615,10 @@ function analyze(route, departureMs) {
       startAt: first.at, endAt: last.at,
       seconds: Math.max(last.t - first.t + lastStepS, 5),
       elev: worst.elev, delta: worst.delta, score: worst.score,
+      // Position et azimut du point représentatif : le masquage par le relief
+      // a besoin d'un observateur et d'une direction. Champs ajoutés en
+      // lecture seule ; level, score et T ne changent pas.
+      lat: worst.lat, lng: worst.lng, az: worst.az, at: worst.at,
       announced: false,
     };
   }).filter((z) => z.length >= T.minZoneMeters);
@@ -549,6 +645,77 @@ function bestDeparture(route, preferredMs, windowMin = 90, stepMin = 10) {
     .filter((o) => ref.exposedS - o.exposedS >= 60)
     .sort((a, b) => a.exposedS - b.exposedS || Math.abs(a.shift) - Math.abs(b.shift));
   return { ref, best: better[0] || null };
+}
+
+/* ---- relief : l'appel réseau, volontairement rare ----
+   Le relief n'est jamais interrogé sur toute la route : seulement au point
+   représentatif de chaque zone déjà détectée, et jamais plus de RELIEF_MAX_ZONES
+   d'entre elles, les plus fortes d'abord. Un trajet type coûte donc une seule
+   requête Elevation. */
+const RELIEF_MAX_ZONES = 6;
+
+async function verifierRelief(result, compteur) {
+  const zones = [...result.zones]
+    .filter((z) => Number.isFinite(z.lat) && Number.isFinite(z.lng))
+    .sort((a, b) => (RANK[b.level] - RANK[a.level]) || (b.score - a.score))
+    .slice(0, RELIEF_MAX_ZONES);
+  if (!zones.length) return;
+
+  // Un observateur puis son rayon, pour chaque zone, en un seul lot.
+  const points = [];
+  for (const z of zones) {
+    points.push([z.lat, z.lng]);
+    for (const d of RELIEF_DISTANCES) points.push(pointVers(z.lat, z.lng, z.az, d));
+  }
+
+  let rep = null;
+  try {
+    const r = await fetch('/api/elevation', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ points }),
+    });
+    compteur.requetes++; compteur.points += points.length;
+    let j = null;
+    try { j = await r.json(); } catch {}
+    if (!r.ok) throw new Error(j?.error || ('HTTP ' + r.status));
+    if (j?.provider !== 'google-elevation') throw new Error('fournisseur inattendu');
+    rep = j;
+  } catch (e) {
+    // Panne : statut inconnu partout. Jamais « soleil visible » par défaut.
+    for (const z of zones) z.terrainOcclusion = occlusionInconnue(e.message, z.elev);
+    result.reliefErreur = e.message;
+    return;
+  }
+
+  const parZone = RELIEF_DISTANCES.length + 1;
+  zones.forEach((z, k) => {
+    const bloc = rep.elevations.slice(k * parZone, (k + 1) * parZone);
+    const obs = bloc[0];
+    if (!obs || !Number.isFinite(obs.elevationM)) {
+      z.terrainOcclusion = occlusionInconnue('altitude de l\u2019observateur indisponible', z.elev);
+      return;
+    }
+    z.terrainOcclusion = occlusionDepuisAltitudes(
+      obs.elevationM, bloc.slice(1), z.elev, RELIEF_DISTANCES);
+  });
+
+  // Les zones non interrogées sont marquées, jamais laissées ambiguës.
+  for (const z of result.zones) {
+    if (!z.terrainOcclusion) {
+      z.terrainOcclusion = occlusionInconnue('zone hors du budget d\u2019appels relief', z.elev);
+    }
+  }
+}
+
+/** Reporte le relief d'une analyse sur la suivante, par recouvrement.
+    Une réanalyse en roulant ne doit pas redéclencher d'appels facturés. */
+function reporterRelief(anciennes, nouvelles) {
+  for (const z of nouvelles) {
+    const a = anciennes.find((x) => x.terrainOcclusion
+      && z.startD < x.endD && x.startD < z.endD);
+    if (a) z.terrainOcclusion = a.terrainOcclusion;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -707,7 +874,8 @@ async function fetchRoute(a, b, departureMs) {
 const $ = (id) => document.getElementById(id);
 const state = { from: null, to: null, route: null, result: null, watch: null,
                 audio: null, wake: null, sim: null, swReg: null,
-                lastFixMs: 0, lastIdx: null, health: null, mode: null };
+                lastFixMs: 0, lastIdx: null, health: null, mode: null,
+                relief: { requetes: 0, points: 0 } };
 
 function fmtTime(ms) {
   return new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -820,6 +988,9 @@ $('analyze').onclick = async () => {
       + `${Math.round(rt.staticS / 60)} min hors trafic, `
       + `facteur ${rt.trafficFactor.toFixed(2)}.`);
     log(`Raccrochage Google — départ ${fmtKm(rt.ecartDep)}, arrivée ${fmtKm(rt.ecartArr)}.`);
+    await verifierRelief(state.result, state.relief);
+    journalRelief();
+    render();
     log(`Cap routier — ${state.result.capSource}, fenêtre ±${state.result.capFenetre} m`
       + `${state.result.capRepli ? `, ${state.result.capRepli} repli(s)` : ''}.`);
     if (state.result.capSource !== 'google-detaille') {
@@ -896,12 +1067,49 @@ function render() {
     li.innerHTML = `<span class="dot ${z.level}"></span>
       <div class="zt"><b>Soleil ${z.side === 'face' ? 'de face' : 'à ' + z.side}
         — ${LABEL[z.level].toLowerCase()}</b>
-      <span>à ${fmtKm(z.startD)} du départ, sur ${fmtKm(z.length)}</span></div>
+      <span>à ${fmtKm(z.startD)} du départ, sur ${fmtKm(z.length)}</span>
+      ${libelleRelief(z)}</div>
       <div class="zk">${fmtTime(z.startAt)}<br>${Math.round(z.elev)}° / ${Math.round(Math.abs(z.delta))}°</div>`;
     list.appendChild(li);
   }
 
   drawGlass(r.zones.length ? worstSample(r) : r.samples[Math.floor(r.samples.length / 2)]);
+}
+
+/* Journal du relief. Vocabulaire de debug assumé : « soleil libre » et
+   « soleil masqué » ne sont pas encore des mots destinés au conducteur. */
+function journalRelief() {
+  const zs = state.result.zones.filter((z) => z.terrainOcclusion);
+  if (!zs.length) return;
+  log(`Relief — ${state.relief.requetes} requête(s) Elevation, `
+    + `${state.relief.points} point(s) interrogé(s).`);
+  if (state.result.reliefErreur) {
+    log(`Relief indisponible : ${state.result.reliefErreur}. Statut inconnu, `
+      + 'aucune zone n\u2019est déclarée libre par défaut.');
+    return;
+  }
+  for (const z of zs) {
+    const o = z.terrainOcclusion;
+    if (!o.checked) { log(`Relief — zone à ${fmtKm(z.startD)} : inconnu (${o.warnings[0]}).`); continue; }
+    log(`Relief — zone à ${fmtKm(z.startD)} : ${o.blocked ? 'soleil masqué' : 'soleil libre'}`
+      + ` · élévation soleil ${o.sunElevationDeg.toFixed(1)}°`
+      + ` · angle terrain max ${o.maxTerrainAngleDeg.toFixed(1)}°`
+      + ` · obstacle à ${fmtKm(o.blockingDistanceM)}`
+      + ` (${Math.round(o.blockingElevationM)} m, observateur ${Math.round(o.observerElevationM)} m).`);
+  }
+}
+
+/** Ligne de debug relief sous une zone. Le vocabulaire final utilisateur
+    n'est pas encore décidé : on reste descriptif. */
+function libelleRelief(z) {
+  const o = z.terrainOcclusion;
+  if (!o) return '';
+  if (!o.checked) return '<span class="relief unk">Relief : inconnu</span>';
+  const d = `soleil ${o.sunElevationDeg.toFixed(1)}° · terrain ${o.maxTerrainAngleDeg.toFixed(1)}°`
+    + ` · obstacle ${fmtKm(o.blockingDistanceM)}`;
+  return o.blocked
+    ? `<span class="relief bloq">Relief : soleil masqué</span><span class="relief det">${d}</span>`
+    : `<span class="relief libre">Relief : soleil libre</span><span class="relief det">${d}</span>`;
 }
 
 function worstSample(r) {
@@ -1068,7 +1276,9 @@ function reanalyzeIfDrifted(along) {
   if (Math.abs(derive) < DRIFT_MS) return;
 
   const dejaDites = state.result.zones.filter((z) => z.announced);
+  const ancienneszones = state.result.zones;
   state.result = analyze(state.route, Date.now() - ecoule);
+  reporterRelief(ancienneszones, state.result.zones);
   // Une zone déjà passée, ou qui recouvre une zone déjà annoncée, se tait.
   for (const z of state.result.zones) {
     if (z.endD <= along
@@ -1241,7 +1451,9 @@ $('start').onclick = async () => {
   // et le départ réel il s'écoule souvent vingt minutes, et près du coucher
   // l'azimut bouge d'un quart de degré par minute.
   const maintenant = Date.now();
+  const ancienneszones = state.result ? state.result.zones : [];
   state.result = analyze(state.route, maintenant);
+  reporterRelief(ancienneszones, state.result.zones);
   state.advice = { ref: state.result, best: null };   // désactivé en V0.2, voir plus haut
   render();
 
