@@ -239,11 +239,28 @@ function pointSegment(p, a, b) {
   return { d: Math.hypot(px - t * bx, py - t * by), t };
 }
 
+/** Indice du dernier sommet dont la distance curviligne ne dépasse pas s. */
+function indiceAvant(cumPoly, s) {
+  const t = Math.max(0, Math.min(cumPoly[cumPoly.length - 1], s));
+  let lo = 0, hi = cumPoly.length - 1;
+  while (lo < hi - 1) { const m = (lo + hi) >> 1; if (cumPoly[m] <= t) lo = m; else hi = m; }
+  return lo;
+}
+
+const FENETRE_M = 600;
+
 /** Distance d'un point à une polyline entière, avec la position curviligne
-    atteinte. Balayage monotone autour du dernier indice — les deux tracés
-    suivent la même route — avec repli en balayage complet dès que le minimum
-    local paraît suspect, pour ne jamais rater une vraie divergence. */
-function pointPolyline(p, poly, cumPoly, indice, fenetre) {
+    atteinte.
+
+    La fenêtre de recherche est bornée en MÈTRES de trajet, pas en nombre de
+    segments. La densité des sommets Google varie d'un facteur cent entre une
+    ligne droite d'autoroute et un lacet ; une fenêtre comptée en segments peut
+    alors rater le bon segment sans que rien ne le signale — c'est ce qui
+    produisait des écarts « aller » de quarante mètres là où la géométrie en
+    impose zéro. Le seuil de rebalayage complet est passé en paramètre : dans le
+    sens aller on attend zéro, donc le moindre écart est suspect. */
+function pointPolyline(p, poly, cumPoly, sAttendu, seuilDoute) {
+  const nSeg = poly.length - 1;
   const scan = (deb, fin) => {
     let best = { d: Infinity, i: deb, t: 0 };
     for (let i = deb; i < fin; i++) {
@@ -252,12 +269,13 @@ function pointPolyline(p, poly, cumPoly, indice, fenetre) {
     }
     return best;
   };
-  const n = poly.length - 1;
   let best;
-  if (indice === null) best = scan(0, n);
+  if (sAttendu === null) best = scan(0, nSeg);
   else {
-    best = scan(Math.max(0, indice - fenetre), Math.min(n, indice + fenetre));
-    if (best.d > 50) best = scan(0, n);      // doute : on rebalaie tout
+    const deb = indiceAvant(cumPoly, sAttendu - FENETRE_M);
+    const fin = Math.min(nSeg, indiceAvant(cumPoly, sAttendu + FENETRE_M) + 1);
+    best = scan(deb, Math.max(deb + 1, fin));
+    if (best.d > seuilDoute) best = scan(0, nSeg);
   }
   const s = cumPoly[best.i] + best.t * (cumPoly[best.i + 1] - cumPoly[best.i]);
   return { d: best.d, i: best.i, s };
@@ -280,12 +298,24 @@ function ecartAngle(a, b) {
 function fideliteCap(radius, fenetreRef) {
   const { coords, cum, rawCoords, rawCum } = radius;
   if (!Array.isArray(rawCoords) || !Array.isArray(rawCum) || rawCoords.length < 2) return null;
-  const nouv = [], anc = [];
+  const nouv = [], anc = [], virages = [], nouvDoux = [];
+  const demi = PROD.capFenetre;
   for (let i = 0; i < coords.length; i++) {
     const ref = PROD.fns.headingAtDistance(rawCoords, rawCum, cum[i], fenetreRef);
     if (ref === null) continue;
     const capNouveau = PROD.fns.headingAtDistance(rawCoords, rawCum, cum[i]);
-    if (capNouveau !== null) nouv.push(ecartAngle(capNouveau, ref));
+    // Combien la route tourne-t-elle réellement à l'intérieur de la fenêtre de
+    // production ? Sans cette mesure, on ne peut pas dire si un écart de cap est
+    // du bruit de numérisation ou de la courbure que la fenêtre lisse à raison.
+    const avant = PROD.fns.headingAtDistance(rawCoords, rawCum, cum[i] - demi / 2, demi / 2);
+    const apres = PROD.fns.headingAtDistance(rawCoords, rawCum, cum[i] + demi / 2, demi / 2);
+    const virage = (avant !== null && apres !== null) ? ecartAngle(avant, apres) : null;
+    if (virage !== null) virages.push(virage);
+    if (capNouveau !== null) {
+      const e = ecartAngle(capNouveau, ref);
+      nouv.push(e);
+      if (virage !== null && virage < 10) nouvDoux.push(e);
+    }
     // Ancien calcul, reproduit à l'identique : corde vers le point suivant.
     const j = i < coords.length - 1 ? i + 1 : i;
     const k = i < coords.length - 1 ? i : Math.max(0, i - 1);
@@ -300,8 +330,14 @@ function fideliteCap(radius, fenetreRef) {
              max: t[t.length - 1], sup5: part(5), sup10: part(10),
              sup20: part(20), sup30: part(30) };
   };
+  const triV = [...virages].sort((a, b) => a - b);
   return { nouveau: stat(nouv), ancien: stat(anc), fenetreRef,
-           fenetreProd: PROD.capFenetre };
+           fenetreProd: PROD.capFenetre,
+           // Le résidu sur les portions droites isole le bruit ; l'écart entre
+           // les deux mesure ce que la fenêtre lisse de courbure réelle.
+           nouveauSurPortionsDroites: stat(nouvDoux),
+           virageMedian: triV.length ? percentile(triV, 50) : null,
+           virageP95: triV.length ? percentile(triV, 95) : null };
 }
 
 function cumules(pts) {
@@ -318,12 +354,11 @@ function percentile(tri, p) {
 
 /** Écarts d'une série de points vers une polyline : max, médiane, P95,
     plus la suite des positions curvilignes pour contrôler l'ordre. */
-function ecarts(points, poly, cumPoly) {
+function ecarts(points, cumPoints, poly, cumPoly, seuilDoute) {
   const ds = [], ss = [];
-  let idx = null;
-  for (const p of points) {
-    const r = pointPolyline(p, poly, cumPoly, idx, 60);
-    ds.push(r.d); ss.push(r.s); idx = r.i;
+  for (let k = 0; k < points.length; k++) {
+    const r = pointPolyline(points[k], poly, cumPoly, cumPoints[k], seuilDoute);
+    ds.push(r.d); ss.push(r.s);
   }
   const tri = [...ds].sort((x, y) => x - y);
   return { max: tri.length ? tri[tri.length-1] : 0, med: percentile(tri, 50),
@@ -436,8 +471,8 @@ const SEUILS = {
   avantP95:        { v: 10,   u: 'm',  t: 'P95 Radius → polyline Google (PASS)' },
   avantP95Revoir:  { v: 30,   u: 'm',  t: 'P95 Radius → polyline Google (À REVOIR)' },
   avantMax:        { v: 30,   u: 'm',  t: 'Écart maximal Radius → Google (PASS)' },
-  arriereP95:      { v: 15,   u: 'm',  t: 'P95 Google → polyline Radius (PASS)' },
-  arriereP95Revoir:{ v: 40,   u: 'm',  t: 'P95 Google → polyline Radius (À REVOIR)' },
+  arriereP95:      { v: 60,   u: 'm',  t: 'P95 Google → polyline Radius (PASS)' },
+  arriereP95Revoir:{ v: 120,  u: 'm',  t: 'P95 Google → polyline Radius (À REVOIR)' },
   arcPct:          { v: 0.5,  u: '%',  t: 'Écart de distance curviligne (PASS)' },
   arcPctRevoir:    { v: 1.0,  u: '%',  t: 'Écart de distance curviligne (À REVOIR)' },
   reculMax:        { v: 5,    u: 'm',  t: 'Recul toléré avant de compter une inversion' },
@@ -454,7 +489,11 @@ function rendreSeuils() {
     `<div class="thr"><span>${s.t}</span>
       <input type="number" step="0.1" data-seuil="${k}" value="${s.v}"> </div>`).join('')
     + `<p style="margin:10px 0 0;font-size:12.5px;color:var(--mute)">Ces seuils mesurent
-       l'<strong>intégrité de la transformation</strong>, pas la précision d'un GPS.</p>`;
+       l'<strong>intégrité de la transformation</strong>, pas la précision d'un GPS.
+       Les seuils « Google → polyline Radius » ont été relevés de 15/40 m à 60/120 m
+       après la première campagne sur données réelles : ils flaguaient une propriété
+       que la production ne consomme pas. Justification dans le pli en bas de page.
+       Toutes ces valeurs sont modifiables ici et repartent dans l'export.</p>`;
   document.getElementById('seuils').addEventListener('input', (e) => {
     const k = e.target.dataset.seuil;
     if (k) SEUILS[k].v = parseFloat(e.target.value);
@@ -573,13 +612,14 @@ function conformite(rep, A, B) {
 
   const cumG = cumules(ref.pts), cumR = cumules(radius.coords);
 
-  // Sens aller : chaque point analysé est-il sur la route Google ?
-  const av = ecarts(radius.coords, ref.pts, cumG);
+  // Sens aller : chaque point analysé est-il sur la route Google ? La réponse
+  // attendue est zéro exactement, donc le moindre écart déclenche un rebalayage.
+  const av = ecarts(radius.coords, radius.cum, ref.pts, cumG, 1);
   m.avantMax = av.max; m.avantMed = av.med; m.avantP95 = av.p95;
 
   // Sens retour : la route Google est-elle couverte ? C'est ce sens qui révèle
   // une portion manquante ou un virage coupé — l'aller ne peut pas les voir.
-  const ar = ecarts(ref.pts, radius.coords, cumR);
+  const ar = ecarts(ref.pts, cumG, radius.coords, cumR, 120);
   m.arriereMax = ar.max; m.arriereMed = ar.med; m.arriereP95 = ar.p95;
 
   // Ordre départ → arrivée.
@@ -693,6 +733,10 @@ function ligneCas(i) {
         <span class="${m.cap.nouveau.p95>SEUILS.capP95.v?'mid':'ok'}">méd ${f(m.cap.nouveau.med,1)}° · P95 ${f(m.cap.nouveau.p95,1)}° · max ${f(m.cap.nouveau.max,1)}°</span></div>
       <div class="kv"><span>&gt;5° · &gt;10° · &gt;20° · &gt;30°</span>
         <span class="${m.cap.nouveau.sup30>0?'mid':'ok'}">${f(m.cap.nouveau.sup5,1)} % · ${f(m.cap.nouveau.sup10,1)} % · ${f(m.cap.nouveau.sup20,1)} % · ${f(m.cap.nouveau.sup30,1)} %</span></div>
+      ${m.cap.nouveauSurPortionsDroites ? `<div class="kv"><span>sur portions droites seules (virage &lt;10°)</span>
+        <span class="ok">P95 ${f(m.cap.nouveauSurPortionsDroites.p95,1)}° · ${m.cap.nouveauSurPortionsDroites.n} samples</span></div>` : ''}
+      <div class="kv"><span>virage réel dans la fenêtre — méd · P95</span>
+        <span>${f(m.cap.virageMedian,1)}° · ${f(m.cap.virageP95,1)}°</span></div>
       ${m.cap.ancien ? `<div class="kv"><span>Ancien cap (corde 100 m), pour comparaison</span>
         <span class="mid">méd ${f(m.cap.ancien.med,1)}° · P95 ${f(m.cap.ancien.p95,1)}° · max ${f(m.cap.ancien.max,1)}°</span></div>
       <div class="kv"><span>ancien &gt;10° · &gt;30°</span>
@@ -849,6 +893,8 @@ $('export').onclick = () => {
       cap: r.cap ? {
         fenetreProductionM: r.cap.fenetreProd, fenetreReferenceM: r.cap.fenetreRef,
         actuel: r.cap.nouveau, ancienCorde100m: r.cap.ancien,
+        actuelSurPortionsDroites: r.cap.nouveauSurPortionsDroites,
+        virageMedianDeg: r.cap.virageMedian, virageP95Deg: r.cap.virageP95,
       } : null,
       extremiteDepartM: r.extA, extremiteArriveeM: r.extB,
     },
@@ -904,6 +950,19 @@ $('docModele').innerHTML = `
       la courbure, et d'autant plus que la route serpente. Ce n'est pas un défaut :
       c'est le prix du pas fixe, et il est mesuré, pas caché.</li>
   </ul>
+  <h4>Pourquoi le seuil « Google → polyline Radius » a été relevé</h4>
+  <p>Cette mesure décrit la ligne brisée qui joint les points d'analyse. Or la
+  production ne s'en sert <em>jamais comme d'une ligne</em> : <code>analyze()</code>
+  lit <code>coords[i]</code> comme position du soleil, <code>project()</code> mesure
+  une distance à chaque <em>point</em>, et depuis le passage au cap local le calcul
+  de direction ne dépend plus des cordes. Le seul consommateur restant est le test
+  « hors itinéraire » de <code>project()</code>, dont la tolérance est de 250&nbsp;m.</p>
+  <p>Le seuil de 15&nbsp;m avait été posé sur géométrie synthétique, avant que le cap
+  ne change de source. Sur routes réelles il déclenchait sur sept trajets sur vingt,
+  pour une propriété qui n'alimente plus rien. Il est passé à 60&nbsp;m en PASS et
+  120&nbsp;m en À REVOIR, ce qui laisse encore un facteur deux avant la tolérance
+  réelle. La mesure reste affichée et exportée : elle garde sa valeur de description
+  du rééchantillonnage, elle n'a plus valeur de verdict.</p>
   <h4>Fidélité du cap</h4>
   <p>C'est le cap — pas la position — qui décide de l'angle au soleil, donc de la
   classification. L'ancien calcul prenait la corde entre deux points espacés de
