@@ -452,8 +452,12 @@ function occlusionDepuisAltitudes(altObservateur, elevations, sunElevation, dist
     observerElevationM: altObservateur,
     maxTerrainAngleDeg: maxAngle,
     sunElevationDeg: sunElevation,
-    blockingDistanceM: dObstacle,
-    blockingElevationM: altObstacle,
+    // Un angle maximal négatif signifie que rien ne dépasse l'horizon de
+    // l'observateur : il n'y a alors aucun obstacle, et annoncer la distance du
+    // point le moins bas induirait en erreur.
+    blockingDistanceM: maxAngle > 0 ? dObstacle : null,
+    blockingElevationM: maxAngle > 0 ? altObstacle : null,
+    horizonDegage: maxAngle <= 0,
     resolutionMaxM: resolutionMax || null,
     margeDeg: TERRAIN_MARGIN_DEG,
     provider: 'google-elevation',
@@ -1171,8 +1175,11 @@ function journalRelief() {
     log(`Relief — zone à ${fmtKm(z.startD)} : ${o.blocked ? 'soleil masqué' : 'soleil libre'}`
       + ` · élévation soleil ${o.sunElevationDeg.toFixed(1)}°`
       + ` · angle terrain max ${o.maxTerrainAngleDeg.toFixed(1)}°`
-      + ` · obstacle à ${fmtKm(o.blockingDistanceM)}`
-      + ` (${Math.round(o.blockingElevationM)} m, observateur ${Math.round(o.observerElevationM)} m).`);
+      + ` · seuil ${(o.sunElevationDeg + (o.margeDeg ?? 0)).toFixed(1)}°`
+      + (o.horizonDegage
+          ? ' · rien au-dessus de l\u2019horizon'
+          : ` · obstacle à ${fmtKm(o.blockingDistanceM)} (${Math.round(o.blockingElevationM)} m)`)
+      + ` · observateur ${Math.round(o.observerElevationM)} m.`);
   }
 }
 
@@ -1181,9 +1188,18 @@ function journalRelief() {
 function libelleRelief(z) {
   const o = z.terrainOcclusion;
   if (!o) return '';
-  if (!o.checked) return '<span class="relief unk">Relief : inconnu</span>';
-  const d = `soleil ${o.sunElevationDeg.toFixed(1)}° · terrain ${o.maxTerrainAngleDeg.toFixed(1)}°`
-    + ` · obstacle ${fmtKm(o.blockingDistanceM)}`;
+  if (!o.checked) {
+    const pourquoi = (o.warnings && o.warnings[0]) ? ` (${o.warnings[0]})` : '';
+    return `<span class="relief unk">Relief : inconnu${pourquoi}</span>`;
+  }
+  // Le seuil réel est « soleil + marge » : sans lui, une ligne où le terrain
+  // dépasse le soleil de deux dixièmes se lit comme une contradiction.
+  const seuil = (o.sunElevationDeg + (o.margeDeg ?? 0)).toFixed(1);
+  const obstacle = o.horizonDegage
+    ? 'rien au-dessus de l\u2019horizon'
+    : `obstacle ${fmtKm(o.blockingDistanceM)}`;
+  const d = `terrain ${o.maxTerrainAngleDeg.toFixed(1)}° vs seuil ${seuil}°`
+    + ` (soleil ${o.sunElevationDeg.toFixed(1)}° + marge ${o.margeDeg ?? 0}°) · ${obstacle}`;
   return o.blocked
     ? `<span class="relief bloq">Relief : soleil masqué</span><span class="relief det">${d}</span>`
     : `<span class="relief libre">Relief : soleil libre</span><span class="relief det">${d}</span>`;
@@ -1228,7 +1244,10 @@ function journalMeteo() {
 function libelleMeteo(z) {
   const w = z.weatherContext;
   if (!w) return '';
-  if (w.status === 'unknown') return '<span class="meteo unk">Atmosphère : inconnue</span>';
+  if (w.status === 'unknown') {
+    const pourquoi = (w.warnings && w.warnings[0]) ? ` (${w.warnings[0]})` : '';
+    return `<span class="meteo unk">Atmosphère : inconnue${pourquoi}</span>`;
+  }
   const n = (v, u, d = 0) => v === null ? '—' : `${v.toFixed(d)} ${u}`;
   const km = w.visibility === null ? '—' : `${(w.visibility / 1000).toFixed(1)} km`;
   return `<span class="meteo tete">Atmosphère${w.status === 'partial' ? ' (partielle)' : ''}</span>`
@@ -1236,6 +1255,7 @@ function libelleMeteo(z) {
     + ` · nuages ${n(w.cloudCover, '%')} · visibilité ${km}`
     + ` · pluie ${n(w.precipitation, 'mm', 1)}</span>`
     + `<span class="meteo det">Prévision ${String(w.instantValidTime).replace('T', ' ')} UTC`
+    + (w.passageTime ? ` · passage ${w.passageTime.slice(11, 16)} UTC` : '')
     + ` · écart ${w.deltaTimeMinutes} min · modèle, non mesuré</span>`;
 }
 

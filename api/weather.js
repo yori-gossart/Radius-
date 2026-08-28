@@ -186,6 +186,10 @@ export default {
         precipitationPeriodEndTime: ech.iso,
         precipitationPeriodHours: 1,
         deltaTimeMinutes: deltaMin,
+        // Heure de passage sur laquelle l'appariement a été fait. Le bandeau de
+        // la zone affiche son DÉBUT ; relief et météo travaillent sur le point
+        // représentatif. Sans ce champ, l'écart affiché est irréconciliable.
+        passageTime: new Date(Number(o.passageTimeMs)).toISOString(),
 
         // Unités réellement reçues, remontées telles quelles : c'est ce qui
         // permet de constater un changement de contrat plutôt que de le subir.
