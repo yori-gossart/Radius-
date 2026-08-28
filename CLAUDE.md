@@ -71,8 +71,32 @@ Ne pas tenter de « réparer » ça, ne pas proposer de service worker périodiq
 ou de Web Push : ça ne résoudra pas le problème et ça ajoutera de la
 complexité.
 
-**Pas de météo, pas d'itinéraires alternatifs.** Chacun est une V2 identifiée.
-Les ajouter maintenant brouillerait la mesure.
+**Weather V0.4 est branché comme couche de mesure passive.** Décision du
+28 août 2026, qui **remplace** la règle précédente « pas de météo ».
+
+Elle ne modifie ni le risque, ni `T`, ni les annonces, ni `terrainOcclusion`.
+Toute utilisation décisionnelle de la météo exige d'abord une validation
+terrain. **Cela ne veut pas dire que la météo est validée** : elle est branchée,
+elle enregistre, elle ne conclut pas.
+
+- fournisseur : Open-Meteo, via `/api/weather`, jamais appelé depuis le
+  navigateur ;
+- interrogée **après** la détection des zones, six au maximum, une seule
+  requête, jamais pendant la conduite ;
+- variables brutes conservées séparément — DNI, couverture nuageuse,
+  visibilité, précipitation, code météo — sans aucune formule qui les combine ;
+- **aucun seuil météo n'existe** : on ignore combien de W/m² gênent réellement,
+  et quel taux de nuages masque le disque solaire ;
+- le DNI vient d'un **modèle de prévision**, pas d'une observation du disque
+  solaire. Ce n'est pas une vérité terrain.
+
+**Licence.** Les données Open-Meteo sont sous CC BY 4.0 : l'attribution
+« Weather data by Open-Meteo.com » est obligatoire et affichée dès qu'une
+donnée atmosphérique est montrée. L'API gratuite est réservée à l'usage **non
+commercial** — ce prototype personnel l'est. Un produit commercial devra passer
+par l'offre payante et son *customer endpoint*.
+
+**Pas d'itinéraires alternatifs.** Reste une V2 identifiée.
 
 **Le trafic entre comme horloge, jamais comme contenu.** L'ETA `TRAFFIC_AWARE_OPTIMAL`
 sert à placer le soleil au bon moment sur le trajet. Le trafic détaillé par

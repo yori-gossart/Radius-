@@ -98,6 +98,11 @@ button:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
 .relief.libre{color:var(--amber)}
 .relief.unk{color:var(--mute)}
 .relief.det{color:var(--mute);letter-spacing:0;margin-top:1px}
+.meteo{display:block;font-family:var(--mono);font-size:10.5px;margin-top:3px}
+.meteo.tete{color:var(--sky);letter-spacing:.06em}
+.meteo.det{color:var(--mute);letter-spacing:0;margin-top:1px}
+.meteo.unk{color:var(--mute);letter-spacing:.06em}
+.attrib{font-family:var(--mono);font-size:10px;color:var(--mute);margin:10px 0 0;opacity:.8}
 
 /* ---- suivi ---- */
 .live{border:1px solid var(--edge);border-radius:12px;background:var(--panel);
@@ -195,6 +200,7 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
   </div>
 
   <ul class="zones" id="zoneList"></ul>
+  <p class="attrib hide" id="attribMeteo"></p>
 
   <div class="field">
     <button class="go" id="sim">Tester ce trajet — sans GPS</button>
@@ -718,6 +724,65 @@ function reporterRelief(anciennes, nouvelles) {
   }
 }
 
+/* ---- contexte atmosphérique : une couche de MESURE ----
+   Elle ne décide rien. Elle enregistre ce que le modèle météo prévoit au point
+   et au moment où Radius annonce une zone. Aucun seuil météo n'existe ici :
+   nous n'avons aucune donnée Radius permettant de dire combien de W/m² gênent
+   réellement, ni quel taux de nuages masque le disque solaire. */
+const METEO_MAX_ZONES = 6;
+
+async function verifierMeteo(result, compteur) {
+  const zones = [...result.zones]
+    .filter((z) => Number.isFinite(z.lat) && Number.isFinite(z.lng) && Number.isFinite(z.at))
+    .sort((a, b) => (RANK[b.level] - RANK[a.level]) || (b.score - a.score))
+    .slice(0, METEO_MAX_ZONES);
+  if (!zones.length) return;
+
+  const observations = zones.map((z) => ({ lat: z.lat, lng: z.lng, passageTimeMs: z.at }));
+
+  try {
+    const r = await fetch('/api/weather', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ observations }),
+    });
+    compteur.requetes++; compteur.zones += zones.length;
+    let j = null;
+    try { j = await r.json(); } catch {}
+    if (!r.ok) throw new Error(j?.error || ('HTTP ' + r.status));
+    if (j?.provider !== 'open-meteo') throw new Error('fournisseur inattendu');
+    if (!Array.isArray(j.resultats) || j.resultats.length !== zones.length) {
+      throw new Error(`${j.resultats?.length ?? 0} résultat(s) pour ${zones.length} zone(s)`);
+    }
+    result.meteoAttribution = j.attribution;
+    zones.forEach((z, k) => { z.weatherContext = j.resultats[k]; });
+  } catch (e) {
+    // Jamais de valeurs inventées : une panne laisse le statut inconnu.
+    for (const z of zones) z.weatherContext = meteoInconnue(e.message);
+    result.meteoErreur = e.message;
+  }
+
+  for (const z of result.zones) {
+    if (!z.weatherContext) z.weatherContext = meteoInconnue('zone hors du budget d\u2019appels météo');
+  }
+}
+
+function meteoInconnue(raison) {
+  return { status: 'unknown', directNormalIrradiance: null, cloudCover: null,
+    visibility: null, precipitation: null, weatherCode: null,
+    instantValidTime: null, precipitationPeriodEndTime: null, deltaTimeMinutes: null,
+    provider: 'open-meteo', fetchedAt: new Date().toISOString(), warnings: [raison] };
+}
+
+/** Reporte le contexte météo d'une analyse sur la suivante, par recouvrement.
+    Aucun appel météo ne part pendant la conduite. */
+function reporterMeteo(anciennes, nouvelles) {
+  for (const z of nouvelles) {
+    const a = anciennes.find((x) => x.weatherContext && z.startD < x.endD && x.startD < z.endD);
+    if (a) z.weatherContext = a.weatherContext;
+  }
+}
+
 /* ═══════════════════════════════════════════════════════════
    5. RÉSEAU — adresses et itinéraire, sans clé ni compte
    ═══════════════════════════════════════════════════════════ */
@@ -875,7 +940,8 @@ const $ = (id) => document.getElementById(id);
 const state = { from: null, to: null, route: null, result: null, watch: null,
                 audio: null, wake: null, sim: null, swReg: null,
                 lastFixMs: 0, lastIdx: null, health: null, mode: null,
-                relief: { requetes: 0, points: 0 } };
+                relief: { requetes: 0, points: 0 },
+                meteo: { requetes: 0, zones: 0 } };
 
 function fmtTime(ms) {
   return new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -990,6 +1056,8 @@ $('analyze').onclick = async () => {
     log(`Raccrochage Google — départ ${fmtKm(rt.ecartDep)}, arrivée ${fmtKm(rt.ecartArr)}.`);
     await verifierRelief(state.result, state.relief);
     journalRelief();
+    await verifierMeteo(state.result, state.meteo);
+    journalMeteo();
     render();
     log(`Cap routier — ${state.result.capSource}, fenêtre ±${state.result.capFenetre} m`
       + `${state.result.capRepli ? `, ${state.result.capRepli} repli(s)` : ''}.`);
@@ -1068,10 +1136,19 @@ function render() {
       <div class="zt"><b>Soleil ${z.side === 'face' ? 'de face' : 'à ' + z.side}
         — ${LABEL[z.level].toLowerCase()}</b>
       <span>à ${fmtKm(z.startD)} du départ, sur ${fmtKm(z.length)}</span>
-      ${libelleRelief(z)}</div>
+      ${libelleRelief(z)}${libelleMeteo(z)}</div>
       <div class="zk">${fmtTime(z.startAt)}<br>${Math.round(z.elev)}° / ${Math.round(Math.abs(z.delta))}°</div>`;
     list.appendChild(li);
   }
+
+  // Attribution Open-Meteo : obligatoire sous CC BY 4.0, donc visible dès
+  // qu'une donnée atmosphérique est affichée, jamais masquée.
+  const attrib = $('attribMeteo');
+  const meteoAffichee = r.zones.some((z) => z.weatherContext && z.weatherContext.status !== 'unknown');
+  attrib.textContent = meteoAffichee
+    ? (r.meteoAttribution || 'Weather data by Open-Meteo.com (CC BY 4.0)')
+    : '';
+  attrib.classList.toggle('hide', !meteoAffichee);
 
   drawGlass(r.zones.length ? worstSample(r) : r.samples[Math.floor(r.samples.length / 2)]);
 }
@@ -1110,6 +1187,56 @@ function libelleRelief(z) {
   return o.blocked
     ? `<span class="relief bloq">Relief : soleil masqué</span><span class="relief det">${d}</span>`
     : `<span class="relief libre">Relief : soleil libre</span><span class="relief det">${d}</span>`;
+}
+
+/* Journal météo. Vocabulaire strictement descriptif : aucune phrase du type
+   « soleil visible » ou « soleil bloqué par les nuages ». Le relief peut
+   conclure, parce que c'est de la géométrie ; la météo ne le peut pas encore. */
+function journalMeteo() {
+  const zs = state.result.zones.filter((z) => z.weatherContext);
+  if (!zs.length) return;
+  log(`Weather — ${state.meteo.requetes} requête(s), ${state.meteo.zones} zone(s), `
+    + `${state.meteo.zones} localisation(s).`);
+  if (state.result.meteoErreur) {
+    log(`Weather indisponible : ${state.result.meteoErreur}. Statut inconnu, `
+      + 'aucune valeur inventée.');
+    return;
+  }
+  for (const z of zs) {
+    const w = z.weatherContext;
+    if (w.status === 'unknown') {
+      log(`Weather — zone à ${fmtKm(z.startD)} : inconnu (${w.warnings[0] || 'sans détail'}).`);
+      continue;
+    }
+    const u = (v, unite, d = 0) => v === null ? 'null' : `${v.toFixed(d)} ${unite}`;
+    log(`Weather — zone à ${fmtKm(z.startD)} [${w.status}] · DNI ${u(w.directNormalIrradiance, 'W/m²')}`
+      + ` · nuages ${u(w.cloudCover, '%')} · visibilité ${u(w.visibility, 'm')}`
+      + ` · pluie ${u(w.precipitation, 'mm', 1)} · code ${w.weatherCode ?? 'null'}`
+      + ` · échéance ${w.instantValidTime} UTC, écart ${w.deltaTimeMinutes} min.`);
+    if (w.warnings && w.warnings.length) {
+      log(`Weather — zone à ${fmtKm(z.startD)} : ${w.warnings.join(' · ')}`);
+    }
+    if (w.unitesRecues) {
+      log(`Weather — unités reçues : ${Object.entries(w.unitesRecues)
+        .map(([k2, v]) => `${k2}=${v ?? 'absente'}`).join(' · ')}`);
+    }
+  }
+}
+
+/** Bloc atmosphérique sous une zone. Aucune interprétation : des grandeurs,
+    leurs unités, et l'échéance utilisée. */
+function libelleMeteo(z) {
+  const w = z.weatherContext;
+  if (!w) return '';
+  if (w.status === 'unknown') return '<span class="meteo unk">Atmosphère : inconnue</span>';
+  const n = (v, u, d = 0) => v === null ? '—' : `${v.toFixed(d)} ${u}`;
+  const km = w.visibility === null ? '—' : `${(w.visibility / 1000).toFixed(1)} km`;
+  return `<span class="meteo tete">Atmosphère${w.status === 'partial' ? ' (partielle)' : ''}</span>`
+    + `<span class="meteo det">DNI ${n(w.directNormalIrradiance, 'W/m²')}`
+    + ` · nuages ${n(w.cloudCover, '%')} · visibilité ${km}`
+    + ` · pluie ${n(w.precipitation, 'mm', 1)}</span>`
+    + `<span class="meteo det">Prévision ${String(w.instantValidTime).replace('T', ' ')} UTC`
+    + ` · écart ${w.deltaTimeMinutes} min · modèle, non mesuré</span>`;
 }
 
 function worstSample(r) {
@@ -1279,6 +1406,7 @@ function reanalyzeIfDrifted(along) {
   const ancienneszones = state.result.zones;
   state.result = analyze(state.route, Date.now() - ecoule);
   reporterRelief(ancienneszones, state.result.zones);
+  reporterMeteo(ancienneszones, state.result.zones);
   // Une zone déjà passée, ou qui recouvre une zone déjà annoncée, se tait.
   for (const z of state.result.zones) {
     if (z.endD <= along
@@ -1454,6 +1582,7 @@ $('start').onclick = async () => {
   const ancienneszones = state.result ? state.result.zones : [];
   state.result = analyze(state.route, maintenant);
   reporterRelief(ancienneszones, state.result.zones);
+  reporterMeteo(ancienneszones, state.result.zones);
   state.advice = { ref: state.result, best: null };   // désactivé en V0.2, voir plus haut
   render();
 
