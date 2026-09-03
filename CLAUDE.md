@@ -96,6 +96,24 @@ donnée atmosphérique est montrée. L'API gratuite est réservée à l'usage **
 commercial** — ce prototype personnel l'est. Un produit commercial devra passer
 par l'offre payante et son *customer endpoint*.
 
+**Aller / retour est une fonction cœur.** Un retour n'est **jamais** obtenu en
+inversant la géométrie de l'aller — sens uniques, échangeurs, restrictions et
+trafic font que Google ne renvoie pas la même route dans l'autre sens.
+
+L'action Retour échange les endpoints — les objets eux-mêmes, donc les
+coordonnées déjà retenues, sans nouveau géocodage — puis demande une nouvelle
+route Google et recalcule intégralement timeline, soleil, zones, relief et
+météo au nouvel horaire.
+
+Aucune donnée environnementale de l'aller n'est réutilisée pour conclure sur le
+retour. `reporterRelief()` et `reporterMeteo()` restent réservés aux réanalyses
+d'un **même** trajet, où la géométrie n'a pas bougé ; les employer entre aller
+et retour ferait passer un relevé pour un autre.
+
+« Ma position » désigne le point capturé au moment du clic. Devenu une arrivée
+après inversion, il reste ce point figé : le retour ne relit jamais le GPS.
+« Retour depuis ma position » serait une autre fonction, elle n'existe pas.
+
 **Pas d'itinéraires alternatifs.** Reste une V2 identifiée.
 
 **Le trafic entre comme horloge, jamais comme contenu.** L'ETA `TRAFFIC_AWARE_OPTIMAL`

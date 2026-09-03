@@ -52,6 +52,13 @@ button.stop{background:transparent;border:1px solid var(--burn);color:var(--burn
 button:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
 .mini{font-size:13px;padding:10px}
 
+/* ---- inversion départ/arrivée, et confirmation du retour en roulant ---- */
+.swapline{display:flex;justify-content:flex-end;margin:-8px 0 14px}
+.swapline button{width:auto;padding:8px 14px}
+.confirm{border:1px solid var(--edge);border-radius:10px;background:var(--panel);
+  padding:13px 14px;margin-bottom:16px}
+.confirm p{margin:0 0 11px;font-size:14px;color:var(--mute)}
+
 /* ---- pare-brise, l'élément signature ---- */
 .glass{position:relative;background:var(--panel);border:1px solid var(--edge);
   border-radius:12px;overflow:hidden;margin-bottom:18px}
@@ -153,6 +160,10 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
     <ul class="suggest hide" id="sugFrom"></ul>
     <button class="ghost mini" id="useHere" style="margin-top:9px">Utiliser ma position actuelle</button>
   </div>
+  <div class="swapline">
+    <button class="ghost mini" type="button" id="swap"
+            aria-label="Inverser le départ et l’arrivée">↕ Inverser</button>
+  </div>
   <div class="field">
     <label for="to">Arrivée</label>
     <input id="to" placeholder="Adresse de destination" autocomplete="off">
@@ -208,6 +219,9 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
   <div class="field">
     <button id="start">Démarrer le suivi réel</button>
   </div>
+  <div class="field">
+    <button class="ghost" id="retourResult">↔ Trajet retour</button>
+  </div>
   <div class="row" style="margin-bottom:14px">
     <button class="ghost mini" id="back">Modifier</button>
     <button class="ghost mini" id="openMapsResult">Ouvrir Google Maps</button>
@@ -240,6 +254,17 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
   </div>
   <div class="field">
     <button class="stop" id="stopTrack">Arrêter le suivi</button>
+  </div>
+  <div class="field">
+    <button class="ghost mini" id="retourTrack">↔ Trajet retour</button>
+  </div>
+  <div class="confirm hide" id="retourConfirm">
+    <p>Passer au trajet retour maintenant ? Le suivi en cours sera arrêté et
+      le trajet inverse sera analysé à l’heure actuelle.</p>
+    <div class="row">
+      <button class="ghost mini" id="retourAnnuler">Annuler</button>
+      <button class="mini" id="retourValider">Analyser le retour</button>
+    </div>
   </div>
 
   <ul class="zones" id="liveZones"></ul>
@@ -944,6 +969,7 @@ const $ = (id) => document.getElementById(id);
 const state = { from: null, to: null, route: null, result: null, watch: null,
                 audio: null, wake: null, sim: null, swReg: null,
                 lastFixMs: 0, lastIdx: null, health: null, mode: null,
+                analyseEnCours: false,
                 relief: { requetes: 0, points: 0 },
                 meteo: { requetes: 0, zones: 0 } };
 
@@ -1018,34 +1044,153 @@ $('useHere').onclick = () => {
   }, { enableHighAccuracy: true, timeout: 8000 });
 };
 
-/* ---- valeurs par défaut : maintenant ---- */
-(function initDateTime() {
-  const n = new Date();
-  $('date').value = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
-  $('time').value = `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
-})();
+/* ---- heure de départ du formulaire ---- */
+/** Instant saisi dans le formulaire. NaN si la date ou l'heure est incomplète :
+    c'est le seul endroit qui lit ces deux champs. */
+function lireDepart() {
+  return new Date(`${$('date').value}T${$('time').value}`).getTime();
+}
 
-/* ---- analyse ---- */
-$('analyze').onclick = async () => {
-  const btn = $('analyze'), err = $('err');
-  err.classList.add('hide');
+/** Cale date et heure sur l'horloge locale de l'appareil et renvoie l'instant
+    correspondant. Sert au premier affichage comme au départ du retour.
+    Le champ heure n'a pas de secondes : la valeur peut donc être en retard de
+    moins d'une minute sur l'horloge réelle, cas dans lequel `api/route`
+    bascule proprement en trafic « maintenant ». */
+function mettreDateHeureMaintenant() {
+  const n = new Date();
+  const p2 = (v) => String(v).padStart(2, '0');
+  $('date').value = `${n.getFullYear()}-${p2(n.getMonth() + 1)}-${p2(n.getDate())}`;
+  $('time').value = `${p2(n.getHours())}:${p2(n.getMinutes())}`;
+  return lireDepart();
+}
+mettreDateHeureMaintenant();
+
+/* ═══════════════════════════════════════════════════════════
+   6 bis. ALLER / RETOUR
+   Un retour n'est pas l'aller lu à l'envers : sens uniques, échangeurs et
+   trafic font que Google ne renvoie pas la même route dans l'autre sens, et
+   une heure différente déplace le soleil. Tout ce bloc ne fait donc qu'une
+   chose — préparer les entrées — puis repasse par analyserTrajet(), qui reste
+   la seule voie de calcul complet.
+   ═══════════════════════════════════════════════════════════ */
+
+/** Échange départ et arrivée : les objets endpoint eux-mêmes, donc les
+    coordonnées exactes déjà retenues, et les libellés affichés. Aucun
+    géocodage, aucun appel réseau — on ne fait que préparer le formulaire. */
+function inverserEndpoints() {
+  const p = state.from; state.from = state.to; state.to = p;
+  const t = $('from').value; $('from').value = $('to').value; $('to').value = t;
+  $('sugFrom').classList.add('hide'); $('sugTo').classList.add('hide');
+  // « Ma position » désigne le point capturé au moment du clic, pas le
+  // téléphone maintenant. Devenu une arrivée, il reste ce point figé : le
+  // dire, plutôt que de laisser croire que le GPS sera relu.
+  if (state.to && state.to.label === 'Ma position') {
+    log(`« Ma position » devient l\u2019arrivée : point figé ${latlng(state.to)}. `
+      + 'La position actuelle du téléphone n\u2019est pas relue.');
+  }
+}
+
+/** Arrêt propre du suivi : watch GPS, simulation, minuterie de santé et
+    maintien en arrière-plan. Sans effet si rien ne tourne — c'est ce qui
+    permet de l'appeler avant n'importe quelle nouvelle analyse. */
+function arreterSuivi() {
+  if (state.watch != null) navigator.geolocation.clearWatch(state.watch);
+  if (state.sim) { clearInterval(state.sim); state.sim = null; }
+  if (state.health) { clearInterval(state.health); state.health = null; }
+  state.watch = null; state.lastIdx = null; state.lastFixMs = 0;
+  state.mode = null;
+  $('live').classList.remove('stale');
+  $('aliveWarn').classList.add('hide');
+  $('modeBanner').classList.add('hide');
+  $('openWaze').classList.remove('hide');
+  $('trackNote').classList.remove('hide');
+  releaseAlive();
+}
+
+/** Aucune zone du trajet précédent ne doit rester à l'écran pendant le calcul
+    du suivant : elle se lirait comme un résultat du nouveau. */
+function viderAffichageTrajet() {
+  $('zoneList').innerHTML = '';
+  $('liveZones').innerHTML = '';
+  $('glassSvg').innerHTML = '';
+  $('glassVal').textContent = '';
+  $('vTitle').textContent = ''; $('vText').textContent = '';
+  $('sDist').textContent = ''; $('sTime').textContent = ''; $('sZones').textContent = '';
+  $('advice').classList.add('hide');
+  $('attribMeteo').classList.add('hide'); $('attribMeteo').textContent = '';
+  $('retourConfirm').classList.add('hide');
+}
+
+/** Efface tout ce qui a été DÉDUIT du trajet précédent, et rien d'autre :
+    state.from et state.to viennent justement d'être inversés et survivent.
+    Les compteurs relief et météo repartent de zéro pour que le journal du
+    nouveau trajet ne cumule pas les appels de l'ancien. */
+function resetAnalyseTrajet() {
+  arreterSuivi();
+  state.route = null;
+  state.result = null;
+  state.advice = null;
+  state.relief = { requetes: 0, points: 0 };
+  state.meteo = { requetes: 0, zones: 0 };
+  alertCount = 0; lastAlertMs = 0;
+  viderAffichageTrajet();
+}
+
+function montrerSaisie(message) {
+  arreterSuivi();
+  $('result').classList.add('hide');
+  $('tracking').classList.add('hide');
+  $('setup').classList.remove('hide');
+  $('err').textContent = message;
+  $('err').classList.remove('hide');
+  window.scrollTo(0, 0);
+}
+
+/* Une seule analyse à la fois. Sans ce verrou, deux appuis rapprochés
+   lançaient A→B et B→A en parallèle : la réponse la plus lente écrasait
+   l'autre, et l'écran ne disait pas lequel des deux sens il montrait. */
+const COMMANDES_ANALYSE = ['analyze', 'swap', 'sim', 'start',
+                           'retourResult', 'retourTrack', 'retourValider'];
+
+function verrouillerCommandes(actif, origine) {
+  for (const id of COMMANDES_ANALYSE) { const b = $(id); if (b) b.disabled = actif; }
+  const retour = actif && origine === 'retour';
+  $('analyze').textContent = (actif && !retour) ? 'Calcul en cours…' : 'Analyser le trajet';
+  const l = retour ? 'Calcul du retour…' : '↔ Trajet retour';
+  $('retourResult').textContent = l;
+  $('retourTrack').textContent = l;
+}
+
+/* ---- l'unique chaîne d'analyse ----
+   Aller comme retour passent ici. Dupliquer ce pipeline serait la première
+   façon de le laisser diverger entre les deux sens. */
+async function analyserTrajet(departureMs, options = {}) {
+  const origine = options.origine === 'retour' ? 'retour' : 'aller';
+  $('err').classList.add('hide');
+
+  if (state.analyseEnCours) return false;
   if (!state.from || !state.to) {
-    err.textContent = 'Choisissez un départ et une arrivée dans la liste proposée.';
-    err.classList.remove('hide'); return;
+    montrerSaisie('Choisissez un départ et une arrivée dans la liste proposée.');
+    return false;
   }
   // Un champ vide donnait NaN, donc aucun seuil franchi, donc le verdict
   // « Aucun éblouissement prévu » — indiscernable d'un vrai feu vert.
-  const dep = new Date(`${$('date').value}T${$('time').value}`).getTime();
-  if (!Number.isFinite(dep)) {
-    err.textContent = 'Date ou heure incomplète.';
-    err.classList.remove('hide'); return;
+  if (!Number.isFinite(departureMs)) {
+    montrerSaisie('Date ou heure incomplète.');
+    return false;
   }
-  btn.disabled = true; btn.textContent = 'Calcul en cours…';
+
+  state.analyseEnCours = true;
+  verrouillerCommandes(true, origine);
+  // Rien du trajet précédent ne survit à cette ligne : ni route, ni zones, ni
+  // relief, ni météo, ni suivi en cours, ni compteurs d'appels.
+  resetAnalyseTrajet();
+
   try {
-    log(`Requête — origin ${latlng(state.from)} → destination ${latlng(state.to)}, `
-      + `départ ${fmtTime(dep)}.`);
-    state.route = await fetchRoute(state.from, state.to, dep);
-    state.result = analyze(state.route, dep);
+    log(`Requête ${origine} — origin ${latlng(state.from)} → destination ${latlng(state.to)}, `
+      + `départ ${fmtTime(departureMs)}.`);
+    state.route = await fetchRoute(state.from, state.to, departureMs);
+    state.result = analyze(state.route, departureMs);
 
     // V0.2 : désactivé volontairement. Le conseil ±90 min rejouerait seulement
     // le soleil sur le même trafic et pourrait donc prétendre optimiser un départ
@@ -1058,6 +1203,9 @@ $('analyze').onclick = async () => {
       + `${Math.round(rt.staticS / 60)} min hors trafic, `
       + `facteur ${rt.trafficFactor.toFixed(2)}.`);
     log(`Raccrochage Google — départ ${fmtKm(rt.ecartDep)}, arrivée ${fmtKm(rt.ecartArr)}.`);
+    // Relief et météo sont recalculés sur les zones de CE trajet. Aucun report
+    // depuis l'aller : reporterRelief/reporterMeteo ne servent qu'aux
+    // réanalyses d'un même trajet, où la géométrie n'a pas bougé.
     await verifierRelief(state.result, state.relief);
     journalRelief();
     await verifierMeteo(state.result, state.meteo);
@@ -1073,20 +1221,62 @@ $('analyze').onclick = async () => {
       log('Écart de raccrochage inhabituel : vérifier que les adresses choisies sont '
         + 'bien au bord d\u2019une route.');
     }
-    if (rt.trafficBasis === 'NOW' && dep > Date.now() + 60000) {
+    if (rt.trafficBasis === 'NOW' && departureMs > Date.now() + 60000) {
       log('Trafic Google calculé à partir de maintenant : vérifier l\u2019heure de départ envoyée.');
     }
-    render();
     $('setup').classList.add('hide');
+    $('tracking').classList.add('hide');
     $('result').classList.remove('hide');
     window.scrollTo(0, 0);
+    return true;
   } catch (e) {
-    err.textContent = e.message || 'Le calcul a échoué. Réessayez dans un instant.';
-    err.classList.remove('hide');
+    // Jamais de repli sur l'ancien résultat : un retour qui échoue ne doit pas
+    // pouvoir se lire comme un retour réussi. from/to restent dans le nouveau
+    // sens, il n'y a qu'à relancer.
+    state.route = null; state.result = null; state.advice = null;
+    const detail = e && e.message ? ' ' + e.message : '';
+    montrerSaisie(origine === 'retour'
+      ? 'Impossible d\u2019analyser le trajet retour pour le moment.' + detail
+      : (detail.trim() || 'Le calcul a échoué. Réessayez dans un instant.'));
+    return false;
   } finally {
-    btn.disabled = false; btn.textContent = 'Analyser le trajet';
+    state.analyseEnCours = false;
+    verrouillerCommandes(false, origine);
   }
+}
+
+/** Retour = destination initiale → départ initial, à partir de maintenant.
+    Ce n'est jamais « ma position actuelle → départ initial » : ce serait une
+    autre fonction, et elle n'existe pas. */
+async function lancerRetour() {
+  $('retourConfirm').classList.add('hide');
+  if (!state.from || !state.to) {
+    montrerSaisie('Aucun trajet à inverser : choisissez un départ et une arrivée.');
+    return false;
+  }
+  const avant = `${latlng(state.from)} → ${latlng(state.to)}`;
+  inverserEndpoints();
+  const dep = mettreDateHeureMaintenant();
+  log(`Retour — ${avant} devient ${latlng(state.from)} → ${latlng(state.to)}, `
+    + `départ ${fmtTime(dep)}. Nouvelle route Google demandée : la géométrie `
+    + 'de l\u2019aller n\u2019est pas réutilisée.');
+  return analyserTrajet(dep, { origine: 'retour' });
+}
+
+$('swap').onclick = () => {
+  inverserEndpoints();
+  log(`Champs inversés — départ ${state.from ? latlng(state.from) : '(non choisi)'}, `
+    + `arrivée ${state.to ? latlng(state.to) : '(non choisi)'}. Aucune requête envoyée.`);
 };
+
+$('analyze').onclick = () => { analyserTrajet(lireDepart(), { origine: 'aller' }); };
+$('retourResult').onclick = () => { lancerRetour(); };
+
+/* Depuis l'écran de suivi un trajet est en cours : on confirme avant de couper
+   le watch GPS, la simulation et les annonces en vol. */
+$('retourTrack').onclick = () => { $('retourConfirm').classList.toggle('hide'); };
+$('retourAnnuler').onclick = () => { $('retourConfirm').classList.add('hide'); };
+$('retourValider').onclick = () => { lancerRetour(); };
 
 $('back').onclick = () => {
   $('result').classList.add('hide'); $('setup').classList.remove('hide');
@@ -1631,17 +1821,8 @@ $('start').onclick = async () => {
 };
 
 $('stopTrack').onclick = () => {
-  if (state.watch != null) navigator.geolocation.clearWatch(state.watch);
-  if (state.sim) { clearInterval(state.sim); state.sim = null; }
-  if (state.health) { clearInterval(state.health); state.health = null; }
-  state.watch = null; state.lastIdx = null; state.lastFixMs = 0;
-  state.mode = null;
-  $('live').classList.remove('stale');
-  $('aliveWarn').classList.add('hide');
-  $('modeBanner').classList.add('hide');
-  $('openWaze').classList.remove('hide');
-  $('trackNote').classList.remove('hide');
-  releaseAlive();
+  arreterSuivi();
+  $('retourConfirm').classList.add('hide');
   $('tracking').classList.add('hide');
   $('result').classList.remove('hide');
   log('Suivi arrêté.');
