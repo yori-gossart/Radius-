@@ -100,10 +100,26 @@ par l'offre payante et son *customer endpoint*.
 inversant la géométrie de l'aller — sens uniques, échangeurs, restrictions et
 trafic font que Google ne renvoie pas la même route dans l'autre sens.
 
-L'action Retour échange les endpoints — les objets eux-mêmes, donc les
-coordonnées déjà retenues, sans nouveau géocodage — puis demande une nouvelle
-route Google et recalcule intégralement timeline, soleil, zones, relief et
-météo au nouvel horaire.
+**Un trajet retour possède sa propre heure de départ.** Décision du 4 septembre
+2026, qui **remplace** la règle précédente « le retour part à partir de
+maintenant ». Radius ne suppose jamais qu'un retour planifié commence
+maintenant : un aller demandé pour demain 13h20 n'implique aucun horaire de
+retour, et en inventer un ferait analyser un trajet que personne n'a demandé.
+
+L'action Retour **prépare** le trajet inverse — elle affiche le sens, propose la
+**date de l'aller**, laisse l'heure vide — puis n'emploie que la date et l'heure
+explicitement choisies. Aucun calcul ne part tant que l'heure n'est pas saisie.
+« Maintenant » est un raccourci volontaire, jamais une valeur imposée : il
+remplit les champs et ne lance rien.
+
+Aucune heure de séjour n'est déduite. Radius ne sait pas combien de temps dure
+une visite, et le deviner serait une invention de plus dans une phase qui n'en
+supporte aucune.
+
+Ensuite, comme auparavant : les endpoints sont échangés — les objets eux-mêmes,
+donc les coordonnées déjà retenues, sans nouveau géocodage — puis une nouvelle
+route Google est demandée et timeline, soleil, zones, relief et météo sont
+intégralement recalculés à l'horaire choisi.
 
 Aucune donnée environnementale de l'aller n'est réutilisée pour conclure sur le
 retour. `reporterRelief()` et `reporterMeteo()` restent réservés aux réanalyses

@@ -53,7 +53,7 @@ const GEOM_RICHE = [
 ];
 const DEPART_RICHE = '2026-12-21T06:00';
 
-const MAINTENANT = new Date('2026-12-21T18:05:00+04:00').getTime();
+const MAINTENANT = new Date(args.maintenant || '2026-12-21T18:05:00+04:00').getTime();
 const DEPART_ALLER = '2026-12-21T06:15';                // saisi dans le formulaire
 
 const GEOM_ALLER  = [[A.lat, A.lng], [B.lat, B.lng]];
@@ -260,6 +260,28 @@ async function attendreFinAnalyse() {
   }, null, { timeout: 20000 });
 }
 
+/* Le retour n'est plus un clic mais une intention : ouvrir le panneau,
+   choisir une heure, puis calculer. C'est tout l'objet du correctif. */
+async function ouvrirRetour(depuis = 'resultat') {
+  await page.click(depuis === 'suivi' ? '#retourTrack' : '#retourResult');
+  await page.waitForSelector('#retourPanneau:not(.hide)', { timeout: 5000 });
+  return page.evaluate(() => ({
+    date: document.getElementById('retourDate').value,
+    heure: document.getElementById('retourTime').value,
+    sens: document.getElementById('retourSens').textContent.trim(),
+    boutonActif: !document.getElementById('retourCalculer').disabled,
+    avisSuivi: !document.getElementById('retourAvis').classList.contains('hide'),
+  }));
+}
+
+async function calculerRetour({ date, heure, maintenant } = {}) {
+  if (maintenant) await page.click('#retourMaintenant');
+  if (date) await page.fill('#retourDate', date);
+  if (heure) await page.fill('#retourTime', heure);
+  await page.click('#retourCalculer');
+  await attendreFinAnalyse();
+}
+
 async function analyser() {
   await page.click('#analyze');
   await attendreFinAnalyse();
@@ -299,6 +321,129 @@ async function etatResultat() {
 
 await page.goto(base + '/index.html');
 console.log(`\nRadius aller/retour — racine ${RACINE}, scénario ${SCENARIO}\n`);
+
+/* ---------- scénario « retour planifié » : le correctif ----------
+   Horloge figée la VEILLE de l'aller. Si le panneau Retour proposait la date
+   du jour, il proposerait le 20 pour un aller le 21 — c'est exactement le
+   défaut corrigé ici. */
+if (SCENARIO === 'planifie') {
+  const JOUR_ALLER = '2026-12-21';
+  const HEURE_ALLER = '06:15';
+  const HEURE_RETOUR = '17:30';
+  /* L'attendu doit être lu dans le fuseau de la PAGE (Indian/Reunion), pas
+     dans celui du conteneur qui fait tourner le test — sans quoi le test
+     accuserait le produit d'un décalage qui est le sien. */
+  const p2 = (v) => String(v).padStart(2, '0');
+  const fmt = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Indian/Reunion',
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const [JOUR_AUJOURD_HUI, HEURE_AUJOURD_HUI] = fmt.format(new Date(MAINTENANT)).split(' ');
+  console.log(`horloge de l’appareil : ${JOUR_AUJOURD_HUI} ${HEURE_AUJOURD_HUI} `
+    + `(heure de La Réunion) · aller demandé le ${JOUR_ALLER} à ${HEURE_ALLER}\n`);
+
+  await choisir('from', 'Point A est');
+  await choisir('to', 'Point B ouest');
+  await page.fill('#date', JOUR_ALLER);
+  await page.fill('#time', HEURE_ALLER);
+  await analyser();
+  const routeAllerP = routes().at(-1);
+  chk('préalable — l’aller est bien analysé à la date demandée',
+    routeAllerP.corps.departureMs === new Date(`${JOUR_ALLER}T${HEURE_ALLER}:00+04:00`).getTime());
+
+  /* ---- TEST A ---- */
+  const avantOuverture = routes().length;
+  const pan = await ouvrirRetour();
+  chk('TEST A — la date proposée est celle de l’ALLER, pas aujourd’hui',
+    pan.date === JOUR_ALLER, `proposé ${pan.date} · aujourd’hui ${JOUR_AUJOURD_HUI}`);
+  chk('TEST A — aucune heure n’est inventée', pan.heure === '', `heure « ${pan.heure} »`);
+  chk('TEST A — rien ne peut être calculé sans choix explicite', !pan.boutonActif);
+  chk('TEST A — ouvrir le panneau ne déclenche aucune requête Google',
+    routes().length === avantOuverture);
+  chk('TEST A — le panneau annonce le sens du retour',
+    /Point B.*→.*Point A/.test(pan.sens), pan.sens);
+
+  /* Annuler ne doit rien avoir changé : les endpoints restent dans le sens aller. */
+  await page.click('#retourAnnuler');
+  chk('TEST A — Annuler n’inverse rien et ne calcule rien',
+    !(await page.isVisible('#retourPanneau')) && routes().length === avantOuverture);
+
+  /* ---- TEST B ---- */
+  await ouvrirRetour();
+  await calculerRetour({ heure: HEURE_RETOUR });
+  const routeRet = routes().at(-1);
+  const attendu = new Date(`${JOUR_ALLER}T${HEURE_RETOUR}:00+04:00`).getTime();
+  chk('TEST B — nouvelle requête Google B → A',
+    routes().length === avantOuverture + 1
+    && routeRet.corps.origin.lat === B.lat && routeRet.corps.destination.lat === A.lat);
+  chk('TEST B — departureMs = la date ET l’heure choisies',
+    routeRet.corps.departureMs === attendu,
+    `${new Date(routeRet.corps.departureMs).toISOString()} attendu ${new Date(attendu).toISOString()}`);
+  chk('TEST B — surtout : ce n’est PAS l’heure de l’appareil',
+    Math.abs(routeRet.corps.departureMs - MAINTENANT) > 3600000,
+    `${Math.round((routeRet.corps.departureMs - MAINTENANT) / 60000)} min d’écart avec « maintenant »`);
+
+  /* ---- TEST D ---- */
+  chk('TEST D — deux requêtes Google, deux géométries indépendantes',
+    routes().length === 2
+    && JSON.stringify(routes()[0].corps.origin) !== JSON.stringify(routes()[1].corps.origin));
+
+  /* ---- TEST E ---- */
+  const obsRetour = meteos().at(-1).corps.observations;
+  const obsAller = meteos()[0].corps.observations;
+  chk('TEST E — les passages météo du retour sont à l’heure du RETOUR',
+    obsRetour.length > 0 && obsRetour.every((o) => o.passageTimeMs >= attendu
+      && o.passageTimeMs < attendu + 4 * 3600000),
+    obsRetour.map((o) => new Date(o.passageTimeMs).toISOString().slice(11, 16)).join(' '));
+  chk('TEST E — aucun passage de l’aller n’est réutilisé',
+    !obsRetour.some((o) => obsAller.some((a) => a.passageTimeMs === o.passageTimeMs)));
+  chk('TEST E — le relief est réinterrogé sur les zones du retour',
+    elevations().length === 2 && elevations()[0].corps.points[0][0] !== elevations()[1].corps.points[0][0]);
+
+  /* ---- TEST C : « Maintenant » reste possible, mais volontairement ---- */
+  await ouvrirRetour();
+  const avantMaintenant = await page.inputValue('#retourTime');
+  await page.click('#retourMaintenant');
+  const apresMaintenant = await page.evaluate(() => ({
+    date: document.getElementById('retourDate').value,
+    heure: document.getElementById('retourTime').value,
+  }));
+  chk('TEST C — « Maintenant » remplit les champs avec l’heure réelle',
+    apresMaintenant.date === JOUR_AUJOURD_HUI
+    && apresMaintenant.heure === HEURE_AUJOURD_HUI,
+    `${apresMaintenant.date} ${apresMaintenant.heure}`);
+  chk('TEST C — « Maintenant » ne lance aucun calcul par lui-même',
+    routes().length === 2 && avantMaintenant !== apresMaintenant.heure);
+  const avantC = routes().length;
+  await page.click('#retourCalculer');
+  await attendreFinAnalyse();
+  chk('TEST C — le calcul lancé après « Maintenant » utilise bien l’heure réelle',
+    routes().length === avantC + 1
+    && Math.abs(routes().at(-1).corps.departureMs - MAINTENANT) < 60000);
+
+  /* ---- TEST F ---- */
+  await page.click('#back');
+  const avantF = await page.evaluate(() => [document.getElementById('from').value,
+                                            document.getElementById('to').value]);
+  const routesAvantF = routes().length;
+  await page.click('#swap');
+  const apresF = await page.evaluate(() => [document.getElementById('from').value,
+                                            document.getElementById('to').value]);
+  chk('TEST F — ↕ Inverser fonctionne toujours seul, sans requête',
+    apresF[0] === avantF[1] && apresF[1] === avantF[0] && routes().length === routesAvantF);
+
+  if (args.capture) {
+    // On est déjà sur l'écran de saisie après le TEST F, champs inversés.
+    await page.fill('#date', JOUR_ALLER); await page.fill('#time', HEURE_ALLER);
+    await analyser();
+    await ouvrirRetour();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: `${args.capture}/panneau-retour.png`, fullPage: true });
+    console.log('capture écrite');
+  }
+  await navigateur.close(); serveur.close();
+  console.log(`\n${ok} contrôle(s) PASS, ${ko} ÉCHEC.`);
+  if (ko) { console.log('Échecs : ' + echecs.join(' | ')); process.exit(1); }
+  process.exit(0);
+}
 
 /* ---------- scénario « riche » : trois niveaux dans un seul trajet ---------- */
 if (SCENARIO === 'riche') {
@@ -441,8 +586,8 @@ chk('TEST C — aucune dérive du résultat après deux inversions',
 console.log('\nTEST D à I — le retour est une analyse complète');
 const avantRetour = { routes: routes().length, elev: elevations().length, meteo: meteos().length };
 const allerCourant = routes().at(-1);
-await page.click('#retourResult');
-await attendreFinAnalyse();
+await ouvrirRetour();
+await calculerRetour({ maintenant: true });
 const routeRetour = routes().at(-1);
 if (await page.isVisible('#err')) {
   console.log('  >> le retour a été refusé : ' + (await page.textContent('#err')));
@@ -525,7 +670,7 @@ chk('§25.5 — « le relief le masque-t-il ? »',
 chk('§25.6 — « où dans le trajet ? »',
   (await page.evaluate(() => document.querySelectorAll('#ligneRail .marque').length)) > 0
   && /à partir de .* du départ/.test(n1));
-chk('§25.7 — « comment lancer le retour ? »', /Trajet retour/.test(n1));
+chk('§25.7 — « comment lancer le retour ? »', /Préparer le retour/.test(n1));
 
 /* §21 — le jargon ne doit plus exister au niveau 1. Il n'a pas disparu :
    il est descendu au niveau 3, ce que le contrôle suivant vérifie. */
@@ -610,15 +755,15 @@ chk('TEST K — une annonce est partie sur ce trajet', /Annonce 1\/4/.test(jSim)
 
 /* ---------- TEST §12 : retour depuis l’écran de suivi ---------- */
 console.log('\nTEST §12 — retour pendant le suivi');
-await page.click('#retourTrack');
-chk('§12 — une confirmation apparaît, pas un basculement brutal',
-  await page.isVisible('#retourConfirm'));
+const panSuivi = await ouvrirRetour('suivi');
+chk('§12 — un panneau apparaît, pas un basculement brutal',
+  await page.isVisible('#retourPanneau'));
+chk('§12 — il prévient que le suivi sera arrêté', panSuivi.avisSuivi);
 await page.click('#retourAnnuler');
-chk('§12 — Annuler referme sans rien lancer', !(await page.isVisible('#retourConfirm')));
+chk('§12 — Annuler referme sans rien lancer', !(await page.isVisible('#retourPanneau')));
 const avantR2 = routes().length;
-await page.click('#retourTrack');
-await page.click('#retourValider');
-await attendreFinAnalyse();
+await ouvrirRetour('suivi');
+await calculerRetour({ maintenant: true });
 chk('§12 — une nouvelle analyse est partie', routes().length === avantR2 + 1);
 chk('§12 — elle repart dans l’autre sens, A→B',
   routes().at(-1).corps.origin.lat === A.lat && routes().at(-1).corps.destination.lat === B.lat);
@@ -631,8 +776,7 @@ chk('§12 — le suivi précédent a été coupé proprement',
 
 /* ---------- TEST L : suivi réel sur la nouvelle route ---------- */
 console.log('\nTEST L — le suivi réel travaille sur la nouvelle route');
-await page.click('#retourResult');                 // repasse en B→A
-await attendreFinAnalyse();
+await ouvrirRetour(); await calculerRetour({ maintenant: true });   // repasse en B→A
 // Un point posé sur la branche B→C : il appartient au retour et à rien d'autre.
 const surBrancheBC = { latitude: (B2.lat + C.lat) / 2, longitude: (B2.lng + C.lng) / 2 };
 chk('TEST L — le point de test est bien hors de la géométrie aller',
@@ -651,7 +795,9 @@ await page.click('#stopTrack');
 console.log('\nTEST §17 — un retour qui échoue ne se déguise pas en succès');
 prochaineRouteEchoue = true;
 const avantEchec = routes().length;
-await page.click('#retourResult');
+await ouvrirRetour();
+await page.click('#retourMaintenant');
+await page.click('#retourCalculer');
 await page.waitForSelector('#err:not(.hide)', { timeout: 20000 });
 const messageErreur = await page.textContent('#err');
 chk('§17 — message explicite',
@@ -670,9 +816,11 @@ chk('§17 — from/to restent dans le nouveau sens : le réessai repart bien de 
 console.log('\nTEST §16 — deux sens ne peuvent pas être calculés en même temps');
 delaiRouteMs = 1200;
 const avantDouble = routes().length;
+await ouvrirRetour();
+await page.click('#retourMaintenant');
 await page.evaluate(() => {
-  document.getElementById('retourResult').click();
-  document.getElementById('retourResult').click();
+  document.getElementById('retourCalculer').click();
+  document.getElementById('retourCalculer').click();
   document.getElementById('analyze').click();
 });
 await attendreFinAnalyse();

@@ -57,8 +57,14 @@ button:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
 .swapline button{width:auto;padding:9px 18px}
 .enligne{width:auto;padding:9px 16px;margin-top:9px}
 .confirm{border:1px solid var(--edge);border-radius:10px;background:var(--panel);
-  padding:13px 14px;margin-bottom:16px}
+  padding:15px 16px;margin-bottom:16px}
 .confirm p{margin:0 0 11px;font-size:14px;color:var(--mute)}
+.confirm .petit-titre{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--sky);margin:0 0 6px}
+.confirm .sens{font-family:var(--disp);font-size:19px;font-weight:700;color:var(--ink);
+  line-height:1.25;margin:0 0 12px}
+.confirm .avis{color:var(--amber);font-size:13.5px}
+.confirm label{margin-bottom:8px}
 
 /* ---- pare-brise, l'élément signature ---- */
 .glass{position:relative;background:var(--panel);border:1px solid var(--edge);
@@ -284,11 +290,12 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
   <div class="field">
     <button class="go" id="sim">Tester sans GPS</button>
   </div>
-  <div class="row" style="margin-bottom:14px">
-    <button class="ghost mini" id="retourResult">↔ Trajet retour</button>
-    <button class="ghost mini" id="openMapsResult">Ouvrir Maps</button>
+  <div class="field">
+    <button class="ghost" id="retourResult">↔ Préparer le retour</button>
   </div>
+  <div id="ancreRetourResult"></div>
   <div class="row" style="margin-bottom:14px">
+    <button class="ghost mini" id="openMapsResult">Ouvrir Maps</button>
     <button class="ghost mini" id="back">Modifier le trajet</button>
   </div>
 
@@ -330,16 +337,9 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
     <button class="stop" id="stopTrack">Arrêter le suivi</button>
   </div>
   <div class="field">
-    <button class="ghost mini" id="retourTrack">↔ Trajet retour</button>
+    <button class="ghost mini" id="retourTrack">↔ Préparer le retour</button>
   </div>
-  <div class="confirm hide" id="retourConfirm">
-    <p>Passer au trajet retour maintenant ? Le suivi en cours sera arrêté et
-      le trajet inverse sera analysé à l’heure actuelle.</p>
-    <div class="row">
-      <button class="ghost mini" id="retourAnnuler">Annuler</button>
-      <button class="mini" id="retourValider">Analyser le retour</button>
-    </div>
-  </div>
+  <div id="ancreRetourTrack"></div>
 
   <details id="suivListe">
     <summary>Toutes les zones du trajet</summary>
@@ -350,6 +350,23 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
     Sur Samsung, désactivez l’optimisation de batterie pour le navigateur, sinon Android
     endort la page dès que vous passez sur Waze.</p>
 </section>
+
+<!-- ========== PANNEAU RETOUR — unique, déplacé dans l'écran actif ========== -->
+<div class="confirm hide" id="retourPanneau">
+  <p class="petit-titre">Trajet retour</p>
+  <p class="sens" id="retourSens"></p>
+  <p class="avis hide" id="retourAvis">Le suivi en cours sera arrêté.</p>
+  <label for="retourDate">Quand repartez-vous ?</label>
+  <div class="row" style="margin-bottom:10px">
+    <input id="retourDate" type="date" aria-label="Date du retour">
+    <input id="retourTime" type="time" aria-label="Heure du retour">
+  </div>
+  <button class="ghost mini enligne" type="button" id="retourMaintenant"
+          style="margin:0 0 12px">Maintenant</button>
+  <button id="retourCalculer" disabled>Calculer le retour</button>
+  <button class="ghost mini" id="retourAnnuler" style="margin-top:9px">Annuler</button>
+  <p class="err hide" id="retourErr"></p>
+</div>
 
 <!-- ========== NIVEAU 3 — présent partout, replié partout ========== -->
 <details id="tech">
@@ -1072,7 +1089,7 @@ const $ = (id) => document.getElementById(id);
 const state = { from: null, to: null, route: null, result: null, watch: null,
                 audio: null, wake: null, sim: null, swReg: null,
                 lastFixMs: 0, lastIdx: null, health: null, mode: null,
-                analyseEnCours: false, suivi: null,
+                analyseEnCours: false, suivi: null, trajet: null,
                 relief: { requetes: 0, points: 0 },
                 meteo: { requetes: 0, zones: 0 } };
 
@@ -1225,7 +1242,7 @@ function viderAffichageTrajet() {
   $('techGlobal').textContent = 'Aucun trajet analysé.';
   $('techZones').innerHTML = '';
   $('attribMeteo').classList.add('hide'); $('attribMeteo').textContent = '';
-  $('retourConfirm').classList.add('hide');
+  fermerPanneauRetour();
   $('suivTitre').textContent = 'En attente du GPS…';
   $('suivChiffres').innerHTML = ''; $('suivRelief').textContent = '';
   $('suivBarre').style.width = '0%';
@@ -1262,15 +1279,17 @@ function montrerSaisie(message) {
    lançaient A→B et B→A en parallèle : la réponse la plus lente écrasait
    l'autre, et l'écran ne disait pas lequel des deux sens il montrait. */
 const COMMANDES_ANALYSE = ['analyze', 'swap', 'sim', 'start',
-                           'retourResult', 'retourTrack', 'retourValider'];
+                           'retourResult', 'retourTrack', 'retourCalculer'];
 
 function verrouillerCommandes(actif, origine) {
   for (const id of COMMANDES_ANALYSE) { const b = $(id); if (b) b.disabled = actif; }
   const retour = actif && origine === 'retour';
   $('analyze').textContent = (actif && !retour) ? 'Calcul en cours…' : 'Analyser le trajet';
-  const l = retour ? 'Calcul du retour…' : '↔ Trajet retour';
+  const l = retour ? 'Calcul du retour…' : '↔ Préparer le retour';
   $('retourResult').textContent = l;
   $('retourTrack').textContent = l;
+  $('retourCalculer').textContent = retour ? 'Calcul du retour…' : 'Calculer le retour';
+  if (!actif) majBoutonRetour();
 }
 
 /* ---- l'unique chaîne d'analyse ----
@@ -1336,6 +1355,8 @@ async function analyserTrajet(departureMs, options = {}) {
     if (rt.trafficBasis === 'NOW' && departureMs > Date.now() + 60000) {
       log('Trafic Google calculé à partir de maintenant : vérifier l\u2019heure de départ envoyée.');
     }
+    state.trajet = { departureMs, arriveeMs: departureMs + state.route.totalS * 1000,
+                     from: state.from, to: state.to, origine };
     $('setup').classList.add('hide');
     $('tracking').classList.add('hide');
     $('result').classList.remove('hide');
@@ -1358,23 +1379,98 @@ async function analyserTrajet(departureMs, options = {}) {
   }
 }
 
-/** Retour = destination initiale → départ initial, à partir de maintenant.
-    Ce n'est jamais « ma position actuelle → départ initial » : ce serait une
-    autre fonction, et elle n'existe pas. */
-async function lancerRetour() {
-  $('retourConfirm').classList.add('hide');
+/** Retour = destination initiale → départ initial, à une heure CHOISIE.
+    Radius ne suppose jamais qu'un retour planifié commence maintenant : un
+    aller demandé pour demain 13:20 n'implique aucun horaire de retour, et en
+    inventer un ferait analyser un trajet que personne n'a demandé.
+    Ce n'est jamais non plus « ma position actuelle → départ initial » : ce
+    serait une autre fonction, et elle n'existe pas. */
+async function lancerRetour(departureMs) {
+  fermerPanneauRetour();
   if (!state.from || !state.to) {
     montrerSaisie('Aucun trajet à inverser : choisissez un départ et une arrivée.');
     return false;
   }
   const avant = `${latlng(state.from)} → ${latlng(state.to)}`;
   inverserEndpoints();
-  const dep = mettreDateHeureMaintenant();
   log(`Retour — ${avant} devient ${latlng(state.from)} → ${latlng(state.to)}, `
-    + `départ ${fmtTime(dep)}. Nouvelle route Google demandée : la géométrie `
-    + 'de l\u2019aller n\u2019est pas réutilisée.');
-  return analyserTrajet(dep, { origine: 'retour' });
+    + `départ choisi ${new Date(departureMs).toLocaleString('fr-FR')}. Nouvelle route `
+    + 'Google demandée : la géométrie de l’aller n’est pas réutilisée.');
+  return analyserTrajet(departureMs, { origine: 'retour' });
 }
+
+/* ---- le panneau de préparation du retour ----
+   Un seul panneau dans la page : on le déplace dans l'écran depuis lequel il
+   est ouvert, plutôt que d'en entretenir deux copies qui divergeraient. */
+function lireRetour() {
+  const d = $('retourDate').value, h = $('retourTime').value;
+  if (!d || !h) return NaN;
+  return new Date(`${d}T${h}`).getTime();
+}
+
+function majBoutonRetour() {
+  $('retourCalculer').disabled = !Number.isFinite(lireRetour()) || state.analyseEnCours;
+}
+
+function fermerPanneauRetour() {
+  $('retourPanneau').classList.add('hide');
+  $('retourErr').classList.add('hide');
+}
+
+function ouvrirPanneauRetour(depuis) {
+  const pan = $('retourPanneau');
+  if (!state.from || !state.to) {
+    montrerSaisie('Aucun trajet à inverser : choisissez un départ et une arrivée.');
+    return;
+  }
+  // Le sens montré est celui du retour, avant toute inversion : annuler ne
+  // doit rien avoir changé.
+  $('retourSens').textContent = `${nomCourt(state.to)} → ${nomCourt(state.from)}`;
+  $('retourAvis').classList.toggle('hide', depuis !== 'suivi');
+
+  // La date par défaut est celle de l'aller, jamais aujourd'hui : c'est tout
+  // l'objet de ce panneau. L'heure reste VIDE — Radius n'a aucun moyen de
+  // savoir combien de temps dure le séjour, et en inventer un serait pire
+  // que de la demander.
+  const memo = state.trajet;
+  if (!$('retourDate').value || (memo && $('retourDate').dataset.pour !== String(memo.departureMs))) {
+    const ref = new Date(memo ? memo.departureMs : Date.now());
+    const p2 = (v) => String(v).padStart(2, '0');
+    $('retourDate').value = `${ref.getFullYear()}-${p2(ref.getMonth() + 1)}-${p2(ref.getDate())}`;
+    $('retourDate').dataset.pour = memo ? String(memo.departureMs) : '';
+    $('retourTime').value = '';
+  }
+  majBoutonRetour();
+  $('ancreRetour' + (depuis === 'suivi' ? 'Track' : 'Result')).appendChild(pan);
+  pan.classList.remove('hide');
+  pan.scrollIntoView({ block: 'nearest' });
+}
+
+$('retourDate').addEventListener('input', majBoutonRetour);
+$('retourTime').addEventListener('input', majBoutonRetour);
+
+/* « Maintenant » est un raccourci volontaire, jamais une valeur imposée : il
+   ne remplit que les champs, il ne lance aucun calcul. */
+$('retourMaintenant').onclick = () => {
+  const n = new Date();
+  const p2 = (v) => String(v).padStart(2, '0');
+  $('retourDate').value = `${n.getFullYear()}-${p2(n.getMonth() + 1)}-${p2(n.getDate())}`;
+  $('retourTime').value = `${p2(n.getHours())}:${p2(n.getMinutes())}`;
+  $('retourDate').dataset.pour = 'maintenant';
+  majBoutonRetour();
+};
+
+$('retourCalculer').onclick = () => {
+  const dep = lireRetour();
+  if (!Number.isFinite(dep)) {
+    $('retourErr').textContent = 'Choisissez une date et une heure de retour.';
+    $('retourErr').classList.remove('hide');
+    return;
+  }
+  lancerRetour(dep);
+};
+
+$('retourAnnuler').onclick = () => { fermerPanneauRetour(); };
 
 $('maintenant').onclick = () => { mettreDateHeureMaintenant(); };
 
@@ -1385,13 +1481,14 @@ $('swap').onclick = () => {
 };
 
 $('analyze').onclick = () => { analyserTrajet(lireDepart(), { origine: 'aller' }); };
-$('retourResult').onclick = () => { lancerRetour(); };
+$('retourResult').onclick = () => { ouvrirPanneauRetour('resultat'); };
 
-/* Depuis l'écran de suivi un trajet est en cours : on confirme avant de couper
-   le watch GPS, la simulation et les annonces en vol. */
-$('retourTrack').onclick = () => { $('retourConfirm').classList.toggle('hide'); };
-$('retourAnnuler').onclick = () => { $('retourConfirm').classList.add('hide'); };
-$('retourValider').onclick = () => { lancerRetour(); };
+/* Depuis l'écran de suivi un trajet est en cours : le panneau prévient que le
+   suivi sera arrêté, et rien n'est coupé tant que le calcul n'est pas lancé. */
+$('retourTrack').onclick = () => {
+  if ($('retourPanneau').classList.contains('hide')) ouvrirPanneauRetour('suivi');
+  else fermerPanneauRetour();
+};
 
 $('back').onclick = () => {
   $('result').classList.add('hide'); $('setup').classList.remove('hide');
@@ -2163,7 +2260,7 @@ $('start').onclick = async () => {
 
 $('stopTrack').onclick = () => {
   arreterSuivi();
-  $('retourConfirm').classList.add('hide');
+  fermerPanneauRetour();
   $('tracking').classList.add('hide');
   $('result').classList.remove('hide');
   log('Suivi arrêté.');
