@@ -53,8 +53,9 @@ button:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
 .mini{font-size:13px;padding:10px}
 
 /* ---- inversion départ/arrivée, et confirmation du retour en roulant ---- */
-.swapline{display:flex;justify-content:flex-end;margin:-8px 0 14px}
-.swapline button{width:auto;padding:8px 14px}
+.swapline{display:flex;justify-content:center;margin:-4px 0 14px}
+.swapline button{width:auto;padding:9px 18px}
+.enligne{width:auto;padding:9px 16px;margin-top:9px}
 .confirm{border:1px solid var(--edge);border-radius:10px;background:var(--panel);
   padding:13px 14px;margin-bottom:16px}
 .confirm p{margin:0 0 11px;font-size:14px;color:var(--mute)}
@@ -67,29 +68,6 @@ button:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
   letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
 .glass .val{position:absolute;top:11px;right:12px;font-family:var(--mono);font-size:11px;color:var(--mute)}
 
-/* ---- verdict ---- */
-.verdict{border:1px solid var(--edge);border-left-width:3px;border-radius:10px;
-  background:var(--panel);padding:16px 16px 15px;margin-bottom:16px}
-.verdict.none{border-left-color:var(--clear)}
-.verdict.low{border-left-color:var(--sky)}
-.verdict.moderate{border-left-color:var(--amber)}
-.verdict.high{border-left-color:var(--burn)}
-.verdict h2{font-family:var(--disp);font-size:21px;font-weight:700;margin:0 0 3px}
-.verdict p{margin:0;color:var(--mute);font-size:14px}
-.stats{display:flex;gap:20px;margin-top:13px;padding-top:13px;border-top:1px solid var(--edge)}
-.stat b{display:block;font-family:var(--mono);font-size:20px;font-weight:500;color:var(--ink)}
-.stat span{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
-  text-transform:uppercase;color:var(--mute)}
-
-/* ---- conseil de départ ---- */
-.advice{background:linear-gradient(180deg,rgba(255,180,58,.08),rgba(255,180,58,.02));
-  border:1px solid rgba(255,180,58,.3);border-radius:10px;padding:14px 16px;margin-bottom:16px}
-.advice .k{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--amber);margin-bottom:5px}
-.advice .v{font-family:var(--disp);font-size:17px;font-weight:600}
-.advice .v em{font-style:normal;color:var(--amber)}
-.advice small{color:var(--mute);font-size:13px;display:block;margin-top:3px}
-
 /* ---- liste des zones ---- */
 .zones{list-style:none;padding:0;margin:0 0 18px}
 .zones li{display:flex;gap:12px;align-items:baseline;padding:12px 0;border-bottom:1px solid var(--edge)}
@@ -100,29 +78,123 @@ button:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
 .zt b{font-family:var(--disp);font-size:15px;font-weight:600;display:block}
 .zt span{font-size:13px;color:var(--mute)}
 .zk{font-family:var(--mono);font-size:12px;color:var(--mute);text-align:right;flex:none}
-.relief{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;margin-top:4px}
-.relief.bloq{color:var(--clear)}
-.relief.libre{color:var(--amber)}
-.relief.unk{color:var(--mute)}
-.relief.det{color:var(--mute);letter-spacing:0;margin-top:1px}
-.meteo{display:block;font-family:var(--mono);font-size:10.5px;margin-top:3px}
-.meteo.tete{color:var(--sky);letter-spacing:.06em}
-.meteo.det{color:var(--mute);letter-spacing:0;margin-top:1px}
-.meteo.unk{color:var(--mute);letter-spacing:.06em}
-.attrib{font-family:var(--mono);font-size:10px;color:var(--mute);margin:10px 0 0;opacity:.8}
+.attrib{font-family:var(--mono);font-size:10px;color:var(--mute);margin:2px 0 18px;opacity:.8}
+
+/* ═══ UX V1 — trois niveaux de lecture ═══
+   Niveau 1 : ce qu'on comprend sans lire. Niveau 2 : « Comprendre », une
+   phrase humaine. Niveau 3 : « Détails techniques », replié, où rien n'a été
+   perdu. Les valeurs brutes ne sont plus l'interface. */
+
+/* -- panneaux repliés : <details> natif, donc clavier et lecteur d'écran -- */
+details{border:1px solid var(--edge);border-radius:10px;background:var(--panel2);
+  margin:10px 0}
+details>summary{cursor:pointer;list-style:none;padding:12px 14px;font-family:var(--mono);
+  font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--sky);
+  min-height:44px;display:flex;align-items:center;gap:8px}
+details>summary::-webkit-details-marker{display:none}
+details>summary::after{content:"+";margin-left:auto;font-size:15px;color:var(--mute)}
+details[open]>summary::after{content:"–"}
+details>summary:focus-visible{outline:2px solid var(--sky);outline-offset:-2px}
+.dcorps{padding:0 14px 14px}
+.dcorps p{margin:0 0 9px;font-size:14px;color:var(--ink);line-height:1.55}
+.dcorps p:last-child{margin-bottom:0}
+.dcorps .attenuee{color:var(--mute);font-size:13px}
+
+/* -- en-tête de trajet : ce qu'on regarde en premier -- */
+.trajet{margin-bottom:18px}
+.trajet h2{font-family:var(--disp);font-size:23px;font-weight:700;line-height:1.2;
+  margin:0 0 4px;letter-spacing:-.01em}
+.trajet .meta{font-family:var(--mono);font-size:13px;color:var(--mute);
+  font-variant-numeric:tabular-nums}
+
+/* -- résumé humain : la réponse aux trois premières questions -- */
+.bilan{border:1px solid var(--edge);border-left-width:3px;border-radius:10px;
+  background:var(--panel);padding:16px;margin-bottom:16px}
+.bilan.none{border-left-color:var(--clear)}
+.bilan.low{border-left-color:var(--sky)}
+.bilan.moderate{border-left-color:var(--amber)}
+.bilan.high{border-left-color:var(--burn)}
+.bilan .grand{font-family:var(--disp);font-size:21px;font-weight:700;line-height:1.25;
+  margin:0 0 6px}
+.bilan .sous{font-size:15px;color:var(--ink);margin:0}
+.bilan .sous b{font-weight:600;font-variant-numeric:tabular-nums}
+.bilan .tiers{font-size:13.5px;color:var(--mute);margin:6px 0 0}
+
+/* -- ligne de trajet : où, dans le trajet. Ce n'est pas une carte. -- */
+.ligne{margin:0 0 18px}
+.ligne .rail{position:relative;height:14px;border-radius:7px;background:var(--panel2);
+  border:1px solid var(--edge);overflow:hidden}
+.ligne .marque{position:absolute;top:0;bottom:0;min-width:4px;border-radius:2px}
+.ligne .marque.low{background:var(--sky)}
+.ligne .marque.moderate{background:var(--amber)}
+.ligne .marque.high{background:var(--burn)}
+.ligne .bouts{display:flex;justify-content:space-between;font-family:var(--mono);
+  font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin-top:7px}
+.ligne .legende{font-size:13px;color:var(--mute);margin:7px 0 0;display:flex;
+  flex-wrap:wrap;gap:4px 14px}
+.ligne .legende span{display:inline-flex;align-items:center;gap:6px}
+
+/* -- carte de zone -- */
+.zc{border:1px solid var(--edge);border-left-width:3px;border-radius:10px;
+  background:var(--panel);padding:15px 16px;margin-bottom:12px}
+.zc.low{border-left-color:var(--sky)}
+.zc.moderate{border-left-color:var(--amber)}
+.zc.high{border-left-color:var(--burn)}
+.zc .haut{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.zc .heure{font-family:var(--mono);font-size:19px;font-weight:500;
+  font-variant-numeric:tabular-nums}
+.zc .chip{margin-left:auto;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;border:1px solid var(--edge);border-radius:999px;
+  padding:4px 10px;display:inline-flex;align-items:center;gap:6px}
+.zc.low .chip{color:var(--sky)}
+.zc.moderate .chip{color:var(--amber)}
+.zc.high .chip{color:var(--burn)}
+.zc h3{font-family:var(--disp);font-size:19px;font-weight:700;line-height:1.25;
+  margin:0 0 10px;letter-spacing:-.005em}
+.zc .quand{font-size:15px;margin:0 0 3px;font-variant-numeric:tabular-nums}
+.zc .ou{font-size:14px;color:var(--mute);margin:0 0 11px;font-variant-numeric:tabular-nums}
+.rel{font-size:14px;margin:0;display:flex;gap:8px;align-items:baseline}
+.rel .marq{font-family:var(--mono);font-size:13px;flex:none}
+.rel.degage .marq{color:var(--clear)}
+.rel.masque .marq{color:var(--amber)}
+.rel.inconnu .marq{color:var(--mute)}
+.zc details{margin:12px 0 0}
+
+/* -- basculer les zones faibles -- */
+.pill{width:auto;padding:11px 16px;font-size:14px;background:transparent;
+  border:1px solid var(--edge);color:var(--ink);margin-bottom:16px}
+
+/* -- écran de suivi -- */
+.suiv{border:1px solid var(--edge);border-left-width:3px;border-radius:12px;
+  background:var(--panel);padding:18px;margin-bottom:14px}
+.suiv.none{border-left-color:var(--clear)}
+.suiv.low{border-left-color:var(--sky)}
+.suiv.moderate{border-left-color:var(--amber)}
+.suiv.high{border-left-color:var(--burn)}
+.suiv .etiq{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--mute);margin:0 0 8px}
+.suiv .titre{font-family:var(--disp);font-size:24px;font-weight:700;line-height:1.2;
+  margin:0 0 14px;letter-spacing:-.01em}
+.suiv .chiffres{display:flex;gap:22px;margin-bottom:14px}
+.suiv .chiffres div b{display:block;font-family:var(--mono);font-size:24px;font-weight:500;
+  line-height:1.1;font-variant-numeric:tabular-nums}
+.suiv .chiffres div span{font-family:var(--mono);font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--mute)}
+.barre{height:8px;border-radius:4px;background:var(--panel2);border:1px solid var(--edge);
+  overflow:hidden}
+.barre i{display:block;height:100%;background:var(--sky);transition:width .4s linear}
+.suiv .age{font-family:var(--mono);font-size:11px;color:var(--mute);margin:12px 0 0}
+.suiv.stale{border-left-color:var(--burn)}
+.suiv.stale .age{color:var(--burn)}
+@media (prefers-reduced-motion:reduce){.barre i{transition:none}*{transition:none!important}}
+
+/* -- niveau 3 : rien n'est perdu, tout est rangé -- */
+.tech{font-family:var(--mono);font-size:11.5px;color:var(--mute);line-height:1.65;
+  white-space:pre-wrap;word-break:break-word;margin:0 0 12px}
+.tech b{color:var(--ink);font-weight:500}
+.techzone{border-top:1px solid var(--edge);padding-top:10px;margin-top:10px}
 
 /* ---- suivi ---- */
-.live{border:1px solid var(--edge);border-radius:12px;background:var(--panel);
-  padding:18px;margin-bottom:16px;text-align:center}
-.live .big{font-family:var(--disp);font-size:32px;font-weight:700;line-height:1.1;margin-bottom:4px}
-.live .sub{color:var(--mute);font-size:14px}
-.live .age{font-family:var(--mono);font-size:11px;color:var(--mute);margin-top:7px}
-.live.stale .age{color:var(--burn)}
-.live.stale .pulse{background:var(--burn);animation:none}
-.pulse{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--clear);
-  margin-right:7px;animation:p 2s ease-in-out infinite;vertical-align:middle}
-@keyframes p{0%,100%{opacity:1}50%{opacity:.25}}
-@media (prefers-reduced-motion:reduce){.pulse{animation:none}*{transition:none!important}}
 
 .mode{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
   border:1px solid var(--edge);border-radius:9px;padding:10px 12px;margin:0 0 14px;text-align:center}
@@ -132,9 +204,6 @@ button:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
 .note strong{color:var(--ink);font-weight:600}
 .err{color:var(--burn);font-size:14px;margin:12px 0}
 .hide{display:none!important}
-.sec{margin-top:26px;padding-top:20px;border-top:1px solid var(--edge)}
-.sec h3{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
-  color:var(--mute);font-weight:400;margin:0 0 12px}
 .suggest{list-style:none;padding:0;margin:6px 0 0;border:1px solid var(--edge);border-radius:9px;
   overflow:hidden;background:var(--panel2)}
 .suggest li{padding:12px 14px;font-size:14px;border-bottom:1px solid var(--edge);cursor:pointer}
@@ -148,8 +217,8 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
 <div class="wrap">
 
 <header>
-  <p class="eyebrow">Prototype personnel — v0.2</p>
-  <h1>Où le soleil sera <em>dans vos yeux</em></h1>
+  <p class="eyebrow">Radius</p>
+  <h1 id="accroche">Anticipez le soleil <em>sur votre trajet</em></h1>
 </header>
 
 <!-- ========== ÉCRAN 1 : SAISIE ========== -->
@@ -165,85 +234,90 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
             aria-label="Inverser le départ et l’arrivée">↕ Inverser</button>
   </div>
   <div class="field">
-    <label for="to">Arrivée</label>
+    <label for="to">Destination</label>
     <input id="to" placeholder="Adresse de destination" autocomplete="off">
     <ul class="suggest hide" id="sugTo"></ul>
   </div>
-  <div class="field row">
-    <div>
-      <label for="date">Date</label>
-      <input id="date" type="date">
+  <div class="field">
+    <label for="date">Départ prévu</label>
+    <div class="row">
+      <input id="date" type="date" aria-label="Date de départ">
+      <input id="time" type="time" aria-label="Heure de départ">
     </div>
-    <div>
-      <label for="time">Heure de départ</label>
-      <input id="time" type="time">
-    </div>
+    <button class="ghost mini enligne" type="button" id="maintenant">Maintenant</button>
   </div>
   <button id="analyze">Analyser le trajet</button>
   <p class="err hide" id="err"></p>
-  <p class="note">Itinéraire et ETA fournis par Google Routes avec trafic,
-    adresses par Nominatim. La clé Google reste côté serveur et n'est jamais
-    envoyée au navigateur.</p>
+  <p class="note">Radius accompagne votre navigation. Maps ou Waze restent votre GPS.</p>
 </section>
 
 <!-- ========== ÉCRAN 2 : RÉSULTAT ========== -->
 <section id="result" class="hide">
-  <div class="glass">
-    <span class="tag">Vue depuis le pare-brise</span>
-    <span class="val" id="glassVal"></span>
-    <svg viewBox="0 0 400 210" id="glassSvg" aria-label="Position du soleil dans le champ de vision"></svg>
+
+  <!-- niveau 1 — le trajet, puis la réponse en une phrase -->
+  <div class="trajet">
+    <h2 id="trajetTitre"></h2>
+    <p class="meta" id="trajetMeta"></p>
   </div>
 
-  <div class="verdict" id="verdict">
-    <h2 id="vTitle"></h2>
-    <p id="vText"></p>
-    <div class="stats">
-      <div class="stat"><b id="sDist"></b><span>km exposés</span></div>
-      <div class="stat"><b id="sTime"></b><span>min exposées</span></div>
-      <div class="stat"><b id="sZones"></b><span>zones</span></div>
-    </div>
+  <div class="bilan" id="bilan">
+    <p class="grand" id="bilanGrand"></p>
+    <p class="sous" id="bilanSous"></p>
+    <p class="tiers" id="bilanTiers"></p>
   </div>
 
-  <div class="advice hide" id="advice">
-    <div class="k">Heure de départ</div>
-    <div class="v" id="aText"></div>
-    <small id="aSub"></small>
+  <div class="ligne" id="ligne">
+    <div class="rail" id="ligneRail" role="img" aria-label=""></div>
+    <div class="bouts"><span>Départ</span><span>Arrivée</span></div>
+    <p class="legende" id="ligneLegende"></p>
   </div>
 
-  <ul class="zones" id="zoneList"></ul>
+  <div id="zoneCartes"></div>
+  <button class="pill hide" id="voirFaibles" type="button"></button>
+  <div id="zoneFaibles" class="hide"></div>
   <p class="attrib hide" id="attribMeteo"></p>
 
+  <!-- actions : deux principales, deux secondaires -->
   <div class="field">
-    <button class="go" id="sim">Tester ce trajet — sans GPS</button>
+    <button id="start">Démarrer le suivi</button>
   </div>
   <div class="field">
-    <button id="start">Démarrer le suivi réel</button>
-  </div>
-  <div class="field">
-    <button class="ghost" id="retourResult">↔ Trajet retour</button>
+    <button class="go" id="sim">Tester sans GPS</button>
   </div>
   <div class="row" style="margin-bottom:14px">
-    <button class="ghost mini" id="back">Modifier</button>
-    <button class="ghost mini" id="openMapsResult">Ouvrir Google Maps</button>
+    <button class="ghost mini" id="retourResult">↔ Trajet retour</button>
+    <button class="ghost mini" id="openMapsResult">Ouvrir Maps</button>
   </div>
-  <p class="note"><strong>Tester ce trajet</strong> rejoue le parcours en accéléré et
-    déclenche les annonces. Le GPS n'est jamais consulté : c'est le mode à utiliser
-    pour un trajet fictif, fût-il à l'autre bout du monde.<br><br>
-    <strong>Démarrer le suivi réel</strong> compare votre position au trajet analysé.
-    À n'utiliser que si vous êtes sur ce trajet-là : ailleurs l'appli affichera
-    « hors itinéraire », et ce sera exact.<br><br>
-    <strong>Google Maps</strong> reçoit exactement le départ et l'arrivée choisis ici.
-    Waze ne sait recevoir qu'une destination et partira de votre position réelle.</p>
+  <div class="row" style="margin-bottom:14px">
+    <button class="ghost mini" id="back">Modifier le trajet</button>
+  </div>
+
+  <details id="aideModes">
+    <summary>Suivi réel ou test&nbsp;?</summary>
+    <div class="dcorps">
+      <p><b>Démarrer le suivi</b> compare votre position réelle au trajet analysé.
+        À n’utiliser que si vous êtes sur ce trajet-là : ailleurs, Radius affichera
+        « hors itinéraire », et ce sera exact.</p>
+      <p><b>Tester sans GPS</b> rejoue le parcours en accéléré et déclenche les
+        annonces. Le GPS n’est jamais consulté : c’est le mode à utiliser pour un
+        trajet fictif, fût-il à l’autre bout du monde.</p>
+      <p class="attenuee">Maps reçoit exactement le départ et l’arrivée choisis ici.
+        Waze ne sait recevoir qu’une destination et partira de votre position réelle.</p>
+    </div>
+  </details>
 </section>
 
 <!-- ========== ÉCRAN 3 : SUIVI ========== -->
 <section id="tracking" class="hide">
   <p class="mode hide" id="modeBanner"></p>
 
-  <div class="live" id="live">
-    <div class="big" id="lBig">En attente du GPS…</div>
-    <div class="sub" id="lSub"><span class="pulse"></span>Suivi actif</div>
-    <div class="age" id="lAge">En attente du premier point GPS…</div>
+  <div class="suiv" id="suiv">
+    <p class="etiq" id="suivEtiq">Prochaine zone</p>
+    <p class="titre" id="suivTitre">En attente du GPS…</p>
+    <div class="chiffres" id="suivChiffres"></div>
+    <div class="barre" id="suivBarreBoite"><i id="suivBarre" style="width:0%"></i></div>
+    <p class="rel" id="suivRelief" style="margin-top:13px"></p>
+    <p class="age" id="lAge">En attente du premier point GPS…</p>
   </div>
 
   <p class="err hide" id="aliveWarn"></p>
@@ -267,21 +341,50 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
     </div>
   </div>
 
-  <ul class="zones" id="liveZones"></ul>
+  <details id="suivListe">
+    <summary>Toutes les zones du trajet</summary>
+    <div class="dcorps"><ul class="zones" id="liveZones"></ul></div>
+  </details>
 
   <p class="note" id="trackNote"><strong>Gardez cet onglet ouvert en arrière-plan.</strong>
-    Sur Samsung, désactivez l'optimisation de batterie pour le navigateur, sinon Android
+    Sur Samsung, désactivez l’optimisation de batterie pour le navigateur, sinon Android
     endort la page dès que vous passez sur Waze.</p>
 </section>
 
-<div class="sec">
-  <h3>Journal</h3>
-  <ul class="zones" id="log"><li><div class="zt"><span>Rien pour l'instant.</span></div></li></ul>
-</div>
+<!-- ========== NIVEAU 3 — présent partout, replié partout ========== -->
+<details id="tech">
+  <summary>Détails techniques</summary>
+  <div class="dcorps">
+    <div class="glass" style="margin-bottom:14px">
+      <span class="tag">Vue depuis le pare-brise</span>
+      <span class="val" id="glassVal"></span>
+      <svg viewBox="0 0 400 210" id="glassSvg" aria-label="Position du soleil dans le champ de vision"></svg>
+    </div>
+    <p class="tech" id="techGlobal">Aucun trajet analysé.</p>
+    <div id="techZones"></div>
+    <p class="tech" style="margin-top:14px"><b>Journal</b></p>
+    <ul class="zones" id="log"><li><div class="zt"><span>Rien pour l’instant.</span></div></li></ul>
+  </div>
+</details>
+
+<details id="apropos">
+  <summary>À propos de Radius</summary>
+  <div class="dcorps">
+    <p>Radius prévoit où et quand le soleil sera bas dans l’axe de votre route,
+      et vous prévient avant que vous y arriviez. Il ne remplace aucun GPS.</p>
+    <p class="attenuee">Itinéraire et heure d’arrivée fournis par Google Routes avec trafic.
+      Adresses par Nominatim. Relief par Google Elevation. Conditions prévues par
+      Open-Meteo. La clé Google reste côté serveur et n’est jamais envoyée au navigateur.</p>
+    <p class="attenuee">Les seuils de détection ne sont pas encore calibrés sur des relevés
+      de terrain. Le calcul du relief ne tient pas compte des bâtiments ni des arbres.
+      Les conditions météo sont enregistrées mais ne modifient encore ni le niveau,
+      ni les annonces.</p>
+  </div>
+</details>
 
 <footer>
   Information prévisionnelle. Ne dispense en aucun cas de la vigilance du conducteur.<br>
-  Aucune donnée de position n'est transmise ni conservée.
+  Aucune donnée de position n’est transmise ni conservée.
 </footer>
 
 </div>
@@ -969,7 +1072,7 @@ const $ = (id) => document.getElementById(id);
 const state = { from: null, to: null, route: null, result: null, watch: null,
                 audio: null, wake: null, sim: null, swReg: null,
                 lastFixMs: 0, lastIdx: null, health: null, mode: null,
-                analyseEnCours: false,
+                analyseEnCours: false, suivi: null,
                 relief: { requetes: 0, points: 0 },
                 meteo: { requetes: 0, zones: 0 } };
 
@@ -1099,7 +1202,7 @@ function arreterSuivi() {
   if (state.health) { clearInterval(state.health); state.health = null; }
   state.watch = null; state.lastIdx = null; state.lastFixMs = 0;
   state.mode = null;
-  $('live').classList.remove('stale');
+  $('suiv').classList.remove('stale');
   $('aliveWarn').classList.add('hide');
   $('modeBanner').classList.add('hide');
   $('openWaze').classList.remove('hide');
@@ -1110,15 +1213,23 @@ function arreterSuivi() {
 /** Aucune zone du trajet précédent ne doit rester à l'écran pendant le calcul
     du suivant : elle se lirait comme un résultat du nouveau. */
 function viderAffichageTrajet() {
-  $('zoneList').innerHTML = '';
+  $('trajetTitre').textContent = ''; $('trajetMeta').textContent = '';
+  $('bilanGrand').textContent = ''; $('bilanSous').textContent = '';
+  $('bilanTiers').textContent = '';
+  $('zoneCartes').innerHTML = ''; $('zoneFaibles').innerHTML = '';
+  $('zoneFaibles').classList.add('hide');
+  $('voirFaibles').classList.add('hide');
+  $('ligneRail').innerHTML = ''; $('ligneLegende').innerHTML = '';
   $('liveZones').innerHTML = '';
-  $('glassSvg').innerHTML = '';
-  $('glassVal').textContent = '';
-  $('vTitle').textContent = ''; $('vText').textContent = '';
-  $('sDist').textContent = ''; $('sTime').textContent = ''; $('sZones').textContent = '';
-  $('advice').classList.add('hide');
+  $('glassSvg').innerHTML = ''; $('glassVal').textContent = '';
+  $('techGlobal').textContent = 'Aucun trajet analysé.';
+  $('techZones').innerHTML = '';
   $('attribMeteo').classList.add('hide'); $('attribMeteo').textContent = '';
   $('retourConfirm').classList.add('hide');
+  $('suivTitre').textContent = 'En attente du GPS…';
+  $('suivChiffres').innerHTML = ''; $('suivRelief').textContent = '';
+  $('suivBarre').style.width = '0%';
+  state.suivi = null;
 }
 
 /** Efface tout ce qui a été DÉDUIT du trajet précédent, et rien d'autre :
@@ -1138,6 +1249,7 @@ function resetAnalyseTrajet() {
 
 function montrerSaisie(message) {
   arreterSuivi();
+  $('accroche').classList.remove('hide');
   $('result').classList.add('hide');
   $('tracking').classList.add('hide');
   $('setup').classList.remove('hide');
@@ -1227,6 +1339,7 @@ async function analyserTrajet(departureMs, options = {}) {
     $('setup').classList.add('hide');
     $('tracking').classList.add('hide');
     $('result').classList.remove('hide');
+    $('accroche').classList.add('hide');
     window.scrollTo(0, 0);
     return true;
   } catch (e) {
@@ -1263,6 +1376,8 @@ async function lancerRetour() {
   return analyserTrajet(dep, { origine: 'retour' });
 }
 
+$('maintenant').onclick = () => { mettreDateHeureMaintenant(); };
+
 $('swap').onclick = () => {
   inverserEndpoints();
   log(`Champs inversés — départ ${state.from ? latlng(state.from) : '(non choisi)'}, `
@@ -1280,59 +1395,277 @@ $('retourValider').onclick = () => { lancerRetour(); };
 
 $('back').onclick = () => {
   $('result').classList.add('hide'); $('setup').classList.remove('hide');
+  $('accroche').classList.remove('hide');
 };
 
-/* ---- rendu ---- */
-function render() {
-  const r = state.result;
-  const v = $('verdict');
-  v.className = 'verdict ' + r.highest;
+/* ═══════════════════════════════════════════════════════════
+   6 ter. RENDU — trois niveaux de lecture
+   Le moteur ne bouge pas d'une virgule ici : tout ce bloc LIT state.result
+   et n'y écrit jamais. Niveau 1, ce qu'on comprend sans lire. Niveau 2,
+   « Comprendre », une phrase humaine. Niveau 3, « Détails techniques »,
+   replié, où pas une valeur n'a été perdue.
+   ═══════════════════════════════════════════════════════════ */
 
-  const titles = {
-    none: 'Aucun éblouissement prévu',
-    low: 'Gêne légère possible',
-    moderate: 'Éblouissement modéré',
-    high: 'Éblouissement fort',
-  };
-  const texts = {
-    none: 'Le soleil ne sera jamais dans l\u2019axe sur ce trajet, à cette heure.',
-    low: 'Le soleil sera bas mais assez décalé de votre trajectoire.',
-    moderate: 'Le soleil viendra dans votre champ de vision. Pare-soleil et distance de sécurité.',
-    high: 'Le soleil sera bas et pratiquement dans l\u2019axe de la route. Envisagez de décaler votre départ.',
-  };
-  $('vTitle').textContent = titles[r.highest];
-  $('vText').textContent = texts[r.highest];
-  $('sDist').textContent = (r.exposedM / 1000).toFixed(1);
-  $('sTime').textContent = Math.round(r.exposedS / 60);
-  $('sZones').textContent = r.zones.length;
+/* Le nom d'une extrémité tel qu'on le dit à voix haute, pas l'adresse
+   complète de Nominatim. */
+function nomCourt(p) {
+  if (!p) return '?';
+  return String(p.label || '').split(',')[0].trim() || '?';
+}
 
-  // Conseil d'heure de départ
-  const a = state.advice;
-  if (a.best) {
-    const shifted = r.departureMs + a.best.shift * 60000;
-    $('aText').innerHTML = `Partez à <em>${fmtTime(shifted)}</em> plutôt que ${fmtTime(r.departureMs)}`;
-    const saved = Math.round((a.ref.exposedS - a.best.exposedS) / 60);
-    const sign = a.best.shift > 0 ? '+' : '';
-    $('aSub').textContent = `${sign}${a.best.shift} min de décalage, ${saved} min d\u2019exposition en moins`
-      + (a.best.exposedS === 0 ? ' — plus aucune zone.' : '.');
-    $('advice').classList.remove('hide');
-  } else $('advice').classList.add('hide');
+function fmtDuree(secondes) {
+  const m = Math.max(1, Math.round(secondes / 60));
+  return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}` : `${m} min`;
+}
 
-  // Liste des zones
-  const list = $('zoneList');
-  list.innerHTML = '';
-  if (!r.zones.length) {
-    list.innerHTML = '<li><div class="zt"><span>Rien à signaler sur ce trajet.</span></div></li>';
+const MOT_NIVEAU = { high: 'Élevé', moderate: 'Modéré', low: 'Faible' };
+const MOT_NIVEAU_F = { high: 'élevée', moderate: 'modérée', low: 'faible' };
+
+/* La phrase d'une zone. Descriptive, jamais conclusive : « Éblouissement fort »
+   affirmerait une gêne vécue, que rien n'a encore mesurée. On décrit une
+   géométrie — hauteur du soleil et écart à l'axe — parce que c'est tout ce que
+   Radius sait réellement. */
+function titreZone(z) {
+  const cote = z.side === 'gauche' ? 'la gauche' : 'la droite';
+  if (z.level === 'high') return 'Soleil très bas, presque dans l’axe';
+  if (z.level === 'moderate') {
+    return z.side === 'face'
+      ? 'Soleil bas dans votre champ de vision'
+      : `Soleil bas sur ${cote}, dans votre champ`;
   }
+  return z.side === 'face' ? 'Soleil bas, dans l’axe de la route' : `Soleil bas sur ${cote}`;
+}
+
+/* Le relief peut conclure, parce que c'est de la géométrie. Les angles et les
+   altitudes qui portent cette conclusion vivent au niveau 3. */
+function etatRelief(z) {
+  const o = z.terrainOcclusion;
+  if (!o || !o.checked) {
+    return { classe: 'inconnu', marque: '?', texte: 'Relief naturel : non vérifié' };
+  }
+  return o.blocked
+    ? { classe: 'masque', marque: '◐', texte: 'Relief naturel : soleil masqué' }
+    : { classe: 'degage', marque: '✓', texte: 'Relief naturel : horizon dégagé' };
+}
+
+function echapper(t) {
+  return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/* Niveau 2 — pourquoi cette zone, en français. Aucune donnée météo ici :
+   la météo ne conclut rien tant qu'elle n'est pas calibrée. */
+function panneauComprendre(z) {
+  const ou = z.side === 'face'
+    ? 'presque aligné avec la direction de la route'
+    : `bas et décalé sur ${z.side === 'gauche' ? 'la gauche' : 'la droite'} de votre trajectoire`;
+  const o = z.terrainOcclusion;
+  let relief;
+  if (!o || !o.checked) {
+    relief = 'Le relief naturel n’a pas pu être vérifié sur cette portion.';
+  } else if (o.blocked) {
+    relief = 'Radius détecte cette géométrie, mais une élévation naturelle devrait '
+      + 'masquer le soleil à cet endroit.';
+  } else {
+    relief = 'Aucun relief naturel n’a été détecté devant le soleil sur cette portion.';
+  }
+  return `<details><summary>Comprendre</summary><div class="dcorps">
+    <p>À cet endroit, le soleil sera ${z.side === 'face' ? 'bas et ' + ou : ou}.</p>
+    <p>${relief}</p>
+    <p class="attenuee">Le calcul du relief ne tient pas encore compte des bâtiments
+      ni des arbres.</p></div></details>`;
+}
+
+/* Niveau 2 bis — les conditions prévues, montrées sans être interprétées.
+   Aucun seuil météo n'existe dans Radius : transformer ces nombres en phrase
+   (« les nuages réduisent le risque ») serait inventer une conclusion. */
+function panneauMeteo(z) {
+  const w = z.weatherContext;
+  if (!w) return '';
+  if (w.status === 'unknown') {
+    return `<details><summary>Conditions prévues</summary><div class="dcorps">
+      <p>Conditions météo : non vérifiées.</p>
+      <p class="attenuee">La raison exacte figure dans « Détails techniques ».</p>
+      </div></details>`;
+  }
+  const n = (v, u, d = 0) => v === null || v === undefined ? '—' : `${v.toFixed(d)} ${u}`;
+  const vis = w.visibility === null || w.visibility === undefined
+    ? '—' : `${(w.visibility / 1000).toFixed(1)} km`;
+  return `<details><summary>Conditions prévues</summary><div class="dcorps">
+    <p>Couverture nuageuse : ${n(w.cloudCover, '%')}<br>
+       Visibilité : ${vis}<br>
+       Pluie : ${n(w.precipitation, 'mm', 1)}<br>
+       Rayonnement direct (DNI) : ${n(w.directNormalIrradiance, 'W/m²')}</p>
+    <p class="attenuee">Données de prévision, non mesurées sur place. Elles ne
+      modifient pas encore l’alerte Radius.</p></div></details>`;
+}
+
+/* Niveau 1 — la carte d'une zone. Quand, quoi, combien de temps, où, relief. */
+function carteZone(z, departureMs) {
+  const delai = Math.max(0, Math.round((z.startAt - departureMs) / 60000));
+  const duree = Math.round(z.seconds / 60);
+  const rel = etatRelief(z);
+  const debut = delai === 0 ? '<b>Dès le départ</b>' : `<b>${delai} min</b> après le départ`;
+  const quand = duree >= 1 ? `${debut}, pendant ~<b>${duree} min</b>` : debut;
+  return `<article class="zc ${z.level}">
+    <div class="haut">
+      <span class="heure">${fmtTime(z.startAt)}</span>
+      <span class="chip"><span class="dot ${z.level}"></span>${MOT_NIVEAU[z.level]}</span>
+    </div>
+    <h3>${titreZone(z)}</h3>
+    <p class="quand">${quand}</p>
+    <p class="ou">à partir de ${fmtKm(z.startD)} du départ, sur ${fmtKm(z.length)}</p>
+    <p class="rel ${rel.classe}"><span class="marq">${rel.marque}</span>${rel.texte}</p>
+    ${panneauComprendre(z)}${panneauMeteo(z)}
+  </article>`;
+}
+
+/* La ligne de trajet. Ce n'est pas une carte : c'est l'avancement, pour voir
+   d'un coup d'œil si les zones sont au début, au milieu ou à la fin. */
+function dessinerLigne(r, totalM) {
+  const rail = $('ligneRail');
+  rail.innerHTML = '';
+  if (!totalM || !r.zones.length) {
+    rail.setAttribute('aria-label', 'Aucune zone sur ce trajet.');
+    $('ligneLegende').innerHTML = '';
+    $('ligne').classList.toggle('hide', !r.zones.length);
+    return;
+  }
+  $('ligne').classList.remove('hide');
+  const tiers = (d) => d / totalM < 1 / 3 ? 'au début' : d / totalM < 2 / 3 ? 'au milieu' : 'vers la fin';
+  const parts = [];
   for (const z of r.zones) {
-    const li = document.createElement('li');
-    li.innerHTML = `<span class="dot ${z.level}"></span>
-      <div class="zt"><b>Soleil ${z.side === 'face' ? 'de face' : 'à ' + z.side}
-        — ${LABEL[z.level].toLowerCase()}</b>
-      <span>à ${fmtKm(z.startD)} du départ, sur ${fmtKm(z.length)}</span>
-      ${libelleRelief(z)}${libelleMeteo(z)}</div>
-      <div class="zk">${fmtTime(z.startAt)}<br>${Math.round(z.elev)}° / ${Math.round(Math.abs(z.delta))}°</div>`;
-    list.appendChild(li);
+    const g = Math.max(0, Math.min(99, z.startD / totalM * 100));
+    const l = Math.max(1.5, Math.min(100 - g, z.length / totalM * 100));
+    const m = document.createElement('span');
+    m.className = `marque ${z.level}`;
+    m.style.left = g.toFixed(2) + '%';
+    m.style.width = l.toFixed(2) + '%';
+    rail.appendChild(m);
+    parts.push(`zone ${MOT_NIVEAU_F[z.level]} ${tiers(z.startD)}`);
+  }
+  rail.setAttribute('aria-label', 'Position des zones sur le trajet : ' + parts.join(', ') + '.');
+  // Jamais la couleur seule : chaque pastille est doublée d'un mot.
+  const compte = { high: 0, moderate: 0, low: 0 };
+  for (const z of r.zones) compte[z.level]++;
+  $('ligneLegende').innerHTML = ['high', 'moderate', 'low']
+    .filter((k) => compte[k])
+    .map((k) => `<span><span class="dot ${k}"></span>${compte[k]} ${MOT_NIVEAU_F[k]}${compte[k] > 1 ? 's' : ''}</span>`)
+    .join('');
+}
+
+/* Niveau 3 — tout ce que l'ancienne interface montrait en permanence. Rien
+   n'est supprimé : c'est rangé. */
+function remplirTech(r, route) {
+  $('techGlobal').innerHTML =
+    `<b>Trajet</b> ${(route.totalM / 1000).toFixed(2)} km · ETA trafic ${Math.round(route.totalS)} s · `
+    + `hors trafic ${Math.round(route.staticS)} s · facteur ${route.trafficFactor.toFixed(3)}\n`
+    + `<b>Fournisseur</b> ${route.provider} · trafficBasis ${route.trafficBasis} · `
+    + `raccrochage départ ${route.ecartDep.toFixed(1)} m, arrivée ${route.ecartArr.toFixed(1)} m\n`
+    + `<b>Cap</b> ${r.capSource} · fenêtre ±${r.capFenetre} m · ${r.capRepli} repli(s) · `
+    + `pas ${STEP_METERS} m · ${r.samples.length} échantillons\n`
+    + `<b>Exposition</b> ${(r.exposedM / 1000).toFixed(3)} km · ${Math.round(r.exposedS)} s · `
+    + `${r.zones.length} zone(s) · niveau max ${r.highest}\n`
+    + `<b>Départ</b> ${new Date(r.departureMs).toISOString()}`
+    + (r.reliefErreur ? `\n<b>Relief</b> erreur : ${echapper(r.reliefErreur)}` : '')
+    + (r.meteoErreur ? `\n<b>Météo</b> erreur : ${echapper(r.meteoErreur)}` : '')
+    + `\n<b>Appels</b> relief ${state.relief.requetes} requête(s) / ${state.relief.points} point(s)`
+    + ` · météo ${state.meteo.requetes} requête(s) / ${state.meteo.zones} zone(s)`;
+
+  const boites = [];
+  r.zones.forEach((z, i) => {
+    const o = z.terrainOcclusion, w = z.weatherContext;
+    let t = `<b>Zone ${i + 1}</b> niveau d’exposition géométrique : ${z.level} · side ${z.side}\n`
+      + `startD ${z.startD.toFixed(1)} m · endD ${z.endD.toFixed(1)} m · length ${z.length.toFixed(1)} m\n`
+      + `startAt ${new Date(z.startAt).toISOString()} · endAt ${new Date(z.endAt).toISOString()} · `
+      + `seconds ${z.seconds.toFixed(1)}\n`
+      + `elev ${z.elev.toFixed(3)}° · delta ${z.delta.toFixed(3)}° · score ${z.score.toFixed(4)} · `
+      + `az ${z.az.toFixed(3)}° · lat ${z.lat.toFixed(6)} · lng ${z.lng.toFixed(6)}`;
+    if (o) {
+      t += `\n<b>Relief</b> ${o.checked ? (o.blocked ? 'masqué' : 'libre') : 'inconnu'}`;
+      if (o.checked) {
+        t += ` · soleil ${o.sunElevationDeg.toFixed(2)}° · terrain max ${o.maxTerrainAngleDeg.toFixed(2)}°`
+          + ` · marge ${o.margeDeg ?? 0}° · seuil ${(o.sunElevationDeg + (o.margeDeg ?? 0)).toFixed(2)}°`
+          + ` · observateur ${Math.round(o.observerElevationM)} m`
+          + (o.horizonDegage ? ' · rien au-dessus de l’horizon'
+             : ` · obstacle à ${Math.round(o.blockingDistanceM)} m (${Math.round(o.blockingElevationM)} m)`);
+      }
+      if (o.warnings && o.warnings.length) t += `\n  warnings : ${echapper(o.warnings.join(' · '))}`;
+    }
+    if (w) {
+      t += `\n<b>Météo</b> status ${w.status} · provider ${w.provider}`;
+      if (w.status !== 'unknown') {
+        t += ` · DNI ${w.directNormalIrradiance} W/m² · nuages ${w.cloudCover} %`
+          + ` · visibilité ${w.visibility} m · pluie ${w.precipitation} mm · code ${w.weatherCode}`
+          + `\n  validTime ${w.instantValidTime} UTC · passage ${w.passageTime ?? '—'} · `
+          + `écart ${w.deltaTimeMinutes} min · relevé ${w.fetchedAt}`;
+        if (w.unitesRecues) {
+          t += `\n  unités reçues : ${echapper(Object.entries(w.unitesRecues)
+            .map(([k, v]) => `${k}=${v ?? 'absente'}`).join(' · '))}`;
+        }
+      }
+      if (w.warnings && w.warnings.length) t += `\n  warnings : ${echapper(w.warnings.join(' · '))}`;
+    }
+    boites.push(`<p class="tech techzone" data-zone="${i}">${t}</p>`);
+  });
+  $('techZones').innerHTML = boites.join('');
+}
+
+function render() {
+  const r = state.result, route = state.route;
+  if (!r || !route) return;
+
+  // ---- niveau 1 : le trajet ----
+  const arrivee = r.departureMs + route.totalS * 1000;
+  $('trajetTitre').textContent = `${nomCourt(state.from)} → ${nomCourt(state.to)}`;
+  $('trajetMeta').textContent = `${fmtTime(r.departureMs)} → ${fmtTime(arrivee)} · `
+    + `${fmtDuree(route.totalS)} · ${(route.totalM / 1000).toFixed(1).replace('.', ',')} km`;
+
+  // ---- niveau 1 : la réponse en une phrase ----
+  // Le tri « important / faible » est une hiérarchie de lecture. Aucune zone
+  // n'est retirée des données, aucune annonce n'est modifiée.
+  const importantes = r.zones.filter((z) => RANK[z.level] >= RANK.moderate);
+  const faibles = r.zones.filter((z) => RANK[z.level] < RANK.moderate);
+  const bilan = $('bilan');
+  bilan.className = 'bilan ' + r.highest;
+
+  if (importantes.length) {
+    const premiere = importantes[0];
+    const delai = Math.max(0, Math.round((premiere.startAt - r.departureMs) / 60000));
+    const totalMin = Math.round(importantes.reduce((a, z) => a + z.seconds, 0) / 60);
+    $('bilanGrand').textContent = importantes.length === 1
+      ? 'Une période importante sur ce trajet'
+      : `${importantes.length} périodes importantes sur ce trajet`;
+    $('bilanSous').innerHTML = delai === 0
+      ? `La première commence <b>dès le départ</b>, à <b>${fmtTime(premiere.startAt)}</b>`
+      : `Première <b>${delai} min</b> après le départ, à <b>${fmtTime(premiere.startAt)}</b>`;
+    $('bilanTiers').textContent = totalMin >= 1
+      ? `~${totalMin} min concernées au total`
+      : '';
+  } else if (faibles.length) {
+    $('bilanGrand').textContent = 'Quelques passages avec soleil bas';
+    $('bilanSous').innerHTML = `${faibles.length} passage${faibles.length > 1 ? 's' : ''} `
+      + 'de niveau faible. Rien d’important à signaler.';
+    $('bilanTiers').textContent = '';
+  } else {
+    $('bilanGrand').textContent = 'Rien d’important à signaler sur ce trajet';
+    $('bilanSous').textContent = 'Le soleil ne sera jamais bas dans l’axe de la route, '
+      + 'à cette heure.';
+    $('bilanTiers').textContent = '';
+  }
+
+  dessinerLigne(r, route.totalM);
+
+  // ---- niveau 1 : les cartes de zones, les importantes d'abord ----
+  $('zoneCartes').innerHTML = importantes.map((z) => carteZone(z, r.departureMs)).join('');
+  $('zoneFaibles').innerHTML = faibles.map((z) => carteZone(z, r.departureMs)).join('');
+  const bouton = $('voirFaibles');
+  bouton.classList.toggle('hide', !faibles.length || !importantes.length);
+  if (faibles.length && !importantes.length) {
+    $('zoneFaibles').classList.remove('hide');
+  } else {
+    $('zoneFaibles').classList.add('hide');
+    bouton.textContent = `Voir aussi les passages faibles (${faibles.length})`;
+    bouton.setAttribute('aria-expanded', 'false');
   }
 
   // Attribution Open-Meteo : obligatoire sous CC BY 4.0, donc visible dès
@@ -1344,11 +1677,22 @@ function render() {
     : '';
   attrib.classList.toggle('hide', !meteoAffichee);
 
+  // ---- niveau 3 ----
+  remplirTech(r, route);
   drawGlass(r.zones.length ? worstSample(r) : r.samples[Math.floor(r.samples.length / 2)]);
 }
 
-/* Journal du relief. Vocabulaire de debug assumé : « soleil libre » et
-   « soleil masqué » ne sont pas encore des mots destinés au conducteur. */
+$('voirFaibles').onclick = () => {
+  const b = $('voirFaibles'), z = $('zoneFaibles');
+  const ouvert = z.classList.toggle('hide') === false;
+  b.setAttribute('aria-expanded', String(ouvert));
+  const n = z.querySelectorAll('.zc').length;
+  b.textContent = ouvert ? 'Masquer les passages faibles' : `Voir aussi les passages faibles (${n})`;
+};
+
+/* Journal du relief. Vocabulaire de debug assumé : il vit désormais au
+   niveau 3, où « soleil masqué » et « soleil libre » ne s'adressent qu'au
+   développeur. */
 function journalRelief() {
   const zs = state.result.zones.filter((z) => z.terrainOcclusion);
   if (!zs.length) return;
@@ -1356,7 +1700,7 @@ function journalRelief() {
     + `${state.relief.points} point(s) interrogé(s).`);
   if (state.result.reliefErreur) {
     log(`Relief indisponible : ${state.result.reliefErreur}. Statut inconnu, `
-      + 'aucune zone n\u2019est déclarée libre par défaut.');
+      + 'aucune zone n’est déclarée libre par défaut.');
     return;
   }
   for (const z of zs) {
@@ -1367,37 +1711,15 @@ function journalRelief() {
       + ` · angle terrain max ${o.maxTerrainAngleDeg.toFixed(1)}°`
       + ` · seuil ${(o.sunElevationDeg + (o.margeDeg ?? 0)).toFixed(1)}°`
       + (o.horizonDegage
-          ? ' · rien au-dessus de l\u2019horizon'
+          ? ' · rien au-dessus de l’horizon'
           : ` · obstacle à ${fmtKm(o.blockingDistanceM)} (${Math.round(o.blockingElevationM)} m)`)
       + ` · observateur ${Math.round(o.observerElevationM)} m.`);
   }
 }
 
-/** Ligne de debug relief sous une zone. Le vocabulaire final utilisateur
-    n'est pas encore décidé : on reste descriptif. */
-function libelleRelief(z) {
-  const o = z.terrainOcclusion;
-  if (!o) return '';
-  if (!o.checked) {
-    const pourquoi = (o.warnings && o.warnings[0]) ? ` (${o.warnings[0]})` : '';
-    return `<span class="relief unk">Relief : inconnu${pourquoi}</span>`;
-  }
-  // Le seuil réel est « soleil + marge » : sans lui, une ligne où le terrain
-  // dépasse le soleil de deux dixièmes se lit comme une contradiction.
-  const seuil = (o.sunElevationDeg + (o.margeDeg ?? 0)).toFixed(1);
-  const obstacle = o.horizonDegage
-    ? 'rien au-dessus de l\u2019horizon'
-    : `obstacle ${fmtKm(o.blockingDistanceM)}`;
-  const d = `terrain ${o.maxTerrainAngleDeg.toFixed(1)}° vs seuil ${seuil}°`
-    + ` (soleil ${o.sunElevationDeg.toFixed(1)}° + marge ${o.margeDeg ?? 0}°) · ${obstacle}`;
-  return o.blocked
-    ? `<span class="relief bloq">Relief : soleil masqué</span><span class="relief det">${d}</span>`
-    : `<span class="relief libre">Relief : soleil libre</span><span class="relief det">${d}</span>`;
-}
-
-/* Journal météo. Vocabulaire strictement descriptif : aucune phrase du type
-   « soleil visible » ou « soleil bloqué par les nuages ». Le relief peut
-   conclure, parce que c'est de la géométrie ; la météo ne le peut pas encore. */
+/* Journal météo. Strictement descriptif : aucune phrase du type « soleil
+   visible ». Le relief peut conclure, parce que c'est de la géométrie ;
+   la météo ne le peut pas encore. */
 function journalMeteo() {
   const zs = state.result.zones.filter((z) => z.weatherContext);
   if (!zs.length) return;
@@ -1427,26 +1749,6 @@ function journalMeteo() {
         .map(([k2, v]) => `${k2}=${v ?? 'absente'}`).join(' · ')}`);
     }
   }
-}
-
-/** Bloc atmosphérique sous une zone. Aucune interprétation : des grandeurs,
-    leurs unités, et l'échéance utilisée. */
-function libelleMeteo(z) {
-  const w = z.weatherContext;
-  if (!w) return '';
-  if (w.status === 'unknown') {
-    const pourquoi = (w.warnings && w.warnings[0]) ? ` (${w.warnings[0]})` : '';
-    return `<span class="meteo unk">Atmosphère : inconnue${pourquoi}</span>`;
-  }
-  const n = (v, u, d = 0) => v === null ? '—' : `${v.toFixed(d)} ${u}`;
-  const km = w.visibility === null ? '—' : `${(w.visibility / 1000).toFixed(1)} km`;
-  return `<span class="meteo tete">Atmosphère${w.status === 'partial' ? ' (partielle)' : ''}</span>`
-    + `<span class="meteo det">DNI ${n(w.directNormalIrradiance, 'W/m²')}`
-    + ` · nuages ${n(w.cloudCover, '%')} · visibilité ${km}`
-    + ` · pluie ${n(w.precipitation, 'mm', 1)}</span>`
-    + `<span class="meteo det">Prévision ${String(w.instantValidTime).replace('T', ' ')} UTC`
-    + (w.passageTime ? ` · passage ${w.passageTime.slice(11, 16)} UTC` : '')
-    + ` · écart ${w.deltaTimeMinutes} min · modèle, non mesuré</span>`;
 }
 
 function worstSample(r) {
@@ -1630,8 +1932,8 @@ function onPosition(lat, lng, speedMps) {
   const p = project(lat, lng);
 
   if (p.lateral > 250) {
-    $('lBig').textContent = 'Hors itinéraire';
-    $('lSub').innerHTML = `<span class="pulse"></span>À ${fmtKm(p.lateral)} du trajet analysé`;
+    afficherSuivi({ etiq: 'Position', titre: 'Hors itinéraire', niveau: 'none',
+      chiffres: [[fmtKm(p.lateral), 'du trajet analysé']], progres: 0 });
     return;
   }
 
@@ -1642,8 +1944,9 @@ function onPosition(lat, lng, speedMps) {
 
   const next = zones.find((z) => z.endD > p.along);
   if (!next) {
-    $('lBig').textContent = 'Plus rien devant';
-    $('lSub').innerHTML = `<span class="pulse"></span>${fmtKm(state.route.totalM - p.along)} restants`;
+    afficherSuivi({ etiq: 'Trajet', titre: 'Plus aucune zone importante sur ce trajet',
+      niveau: 'none', chiffres: [[fmtKm(state.route.totalM - p.along), 'restants']],
+      progres: 1 });
     return;
   }
 
@@ -1651,13 +1954,22 @@ function onPosition(lat, lng, speedMps) {
   const secs = secondsTo(p.along, next.startD, speedMps);
 
   if (gap === 0) {
-    $('lBig').textContent = `Soleil ${next.side === 'face' ? 'de face' : 'à ' + next.side}`;
-    $('lSub').innerHTML = `<span class="pulse"></span>Vous y êtes — encore ${fmtKm(next.endD - p.along)}`;
+    // Zone en cours. La durée restante vient de la timeline Radius, la même
+    // horloge que celle qui a placé la zone — jamais d'une vitesse inventée.
+    const restantS = secondsTo(p.along, next.endD, speedMps);
+    const chiffres = restantS > 30
+      ? [[`~${Math.max(1, Math.round(restantS / 60))} min`, 'encore'],
+         [fmtKm(next.endD - p.along), 'restants']]
+      : [[fmtKm(next.endD - p.along), 'jusqu’à la fin de cette portion']];
+    afficherSuivi({ etiq: 'Zone en cours', titre: titreZone(next), niveau: next.level,
+      chiffres, progres: 1, zone: next });
   } else {
-    $('lBig').textContent = fmtKm(gap);
-    $('lSub').innerHTML = `<span class="pulse"></span>avant « soleil ${
-      next.side === 'face' ? 'de face' : 'à ' + next.side}` +
-      ` », dans ${Math.max(1, Math.round(secs / 60))} min`;
+    const chiffres = [[`${Math.max(1, Math.round(secs / 60))} min`, 'avant la zone'],
+                      [fmtKm(gap), 'de distance']];
+    const duree = Math.round(next.seconds / 60);
+    if (duree >= 1) chiffres.push([`~${duree} min`, 'de zone']);
+    afficherSuivi({ etiq: 'Prochaine zone', titre: titreZone(next), niveau: next.level,
+      chiffres, progres: progressionVers(next, gap), zone: next });
   }
 
   // L'affichage suit la zone la plus proche ; l'alerte doit voir par-dessus
@@ -1670,6 +1982,35 @@ function onPosition(lat, lng, speedMps) {
   renderLiveZones(p.along);
 }
 
+/* Progression vers la zone suivante. Il n'existe aucune distance de référence
+   dans les données : on retient l'écart au moment où cette zone est devenue la
+   prochaine, et la barre se remplit par rapport à lui. C'est de l'affichage,
+   rien n'en dépend. */
+function progressionVers(zone, gap) {
+  const su = state.suivi;
+  if (!su || su.zone !== zone) { state.suivi = { zone, ecart0: gap }; return 0; }
+  if (!(su.ecart0 > 0)) return 0;
+  return Math.max(0, Math.min(1, 1 - gap / su.ecart0));
+}
+
+/* Écran compagnon : une seule chose à lire à la fois. Angles, seuils, DNI et
+   journal ne passent plus par ici — ils vivent dans « Détails techniques ». */
+function afficherSuivi({ etiq, titre, niveau, chiffres, progres, zone }) {
+  $('suiv').className = 'suiv ' + (niveau || 'none');
+  $('suivEtiq').textContent = etiq;
+  $('suivTitre').textContent = titre;
+  $('suivChiffres').innerHTML = (chiffres || [])
+    .map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`).join('');
+  $('suivBarre').style.width = Math.round((progres || 0) * 100) + '%';
+  $('suivBarreBoite').classList.toggle('hide', !zone);
+  const rel = $('suivRelief');
+  if (zone) {
+    const e = etatRelief(zone);
+    rel.className = 'rel ' + e.classe;
+    rel.innerHTML = `<span class="marq">${e.marque}</span>${e.texte}`;
+  } else { rel.className = 'rel'; rel.textContent = ''; }
+}
+
 function renderLiveZones(along) {
   const l = $('liveZones');
   l.innerHTML = '';
@@ -1678,7 +2019,7 @@ function renderLiveZones(along) {
     const li = document.createElement('li');
     li.style.opacity = done ? '.35' : '1';
     li.innerHTML = `<span class="dot ${z.level}"></span>
-      <div class="zt"><b>Soleil ${z.side === 'face' ? 'de face' : 'à ' + z.side}</b>
+      <div class="zt"><b>${titreZone(z)}</b>
       <span>${done ? 'passée' : 'dans ' + fmtKm(Math.max(0, z.startD - along))}</span></div>
       <div class="zk">${z.announced ? 'annoncée' : ''}</div>`;
     l.appendChild(li);
@@ -1693,7 +2034,7 @@ function renderLiveZones(along) {
 const STALE_MS = 30000;
 
 function refreshHealth() {
-  const live = $('live'), age = $('lAge'), warn = $('aliveWarn');
+  const live = $('suiv'), age = $('lAge'), warn = $('aliveWarn');
 
   if (!state.lastFixMs) {
     live.classList.add('stale');

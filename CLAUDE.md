@@ -114,6 +114,33 @@ et retour ferait passer un relevé pour un autre.
 après inversion, il reste ce point figé : le retour ne relit jamais le GPS.
 « Retour depuis ma position » serait une autre fonction, elle n'existe pas.
 
+**L'interface grand public suit trois niveaux.** Décision du 4 septembre 2026.
+
+1. l'information immédiatement utile : quand, où dans le trajet, combien de
+   temps, de quel côté, et si le relief masque le soleil ;
+2. l'explication humaine, sous « Comprendre » ;
+3. les données techniques, sous « Détails techniques », replié.
+
+Les valeurs scientifiques brutes — angles, seuils, scores, DNI, horodatages UTC,
+provider, warnings, journal — ne sont plus l'interface principale. Elles ne sont
+pas supprimées pour autant : **rien ne doit jamais disparaître**, tout descend au
+niveau 3. La phase reste une phase de mesure ; un relevé impossible à
+reconstituer est un relevé perdu.
+
+Les phrases du niveau 1 décrivent une géométrie, elles ne concluent pas sur une
+gêne vécue : « Soleil très bas, presque dans l'axe », jamais « Éblouissement
+fort ». Tant que `T` n'est pas calibré, affirmer l'éblouissement serait
+promettre ce que rien n'a mesuré.
+
+La météo reste passive et ne doit jamais être transformée en conclusion
+utilisateur tant qu'elle n'est pas calibrée : on montre les grandeurs, on ne les
+interprète pas.
+
+Le tri « important / faible » de l'écran de résultat est une **hiérarchie de
+lecture**. Aucune zone n'est retirée des données, aucune annonce n'est modifiée.
+
+Le redesign UX ne modifie aucun résultat scientifique.
+
 **Pas d'itinéraires alternatifs.** Reste une V2 identifiée.
 
 **Le trafic entre comme horloge, jamais comme contenu.** L'ETA `TRAFFIC_AWARE_OPTIMAL`

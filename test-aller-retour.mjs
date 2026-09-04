@@ -40,6 +40,19 @@ const B = { lat: -20.94117, lng: 55.57849, label: 'Point B — Réunion ouest' }
 const B2 = { lat: -20.923476, lng: 55.575151 };         // amorce nord, propre au retour
 const C  = { lat: -20.969029, lng: 55.470588 };         // longue branche au sud-ouest
 
+/* Trajet « riche » : six branches dont les caps balaient l'azimut du soleil
+   levant, séparées par des tronçons hors axe plus longs que mergeGapMeters.
+   Il produit les trois niveaux à la fois — sans quoi l'empreinte de
+   non-régression ne porterait que sur une zone, et les zones faibles ne
+   seraient jamais exercées. */
+const D = { lat: -21.027954, lng: 55.550229, label: 'Point D — sud de l’île' };
+const GEOM_RICHE = [
+  [-20.88, 55.45], [-20.90106, 55.503108], [-20.912729, 55.495896],
+  [-20.948795, 55.538772], [-20.960464, 55.53156], [-21.004615, 55.564652],
+  [-21.027954, 55.550229],
+];
+const DEPART_RICHE = '2026-12-21T06:00';
+
 const MAINTENANT = new Date('2026-12-21T18:05:00+04:00').getTime();
 const DEPART_ALLER = '2026-12-21T06:15';                // saisi dans le formulaire
 
@@ -110,6 +123,7 @@ const serveur = http.createServer(async (req, res) => {
       const proche = (p, q) => Math.abs(p.lat - q.lat) < 1e-6 && Math.abs(p.lng - q.lng) < 1e-6;
       if (proche(o, A) && proche(d, B)) return envoyer(reponseRoute(GEOM_ALLER));
       if (proche(o, B) && proche(d, A)) return envoyer(reponseRoute(GEOM_RETOUR));
+      if (proche(o, A) && proche(d, D)) return envoyer(reponseRoute(GEOM_RICHE));
       return envoyer({ error: 'Couple origine/destination inconnu du banc de test.' }, 404);
     }
 
@@ -205,7 +219,7 @@ await page.route('**://fonts.gstatic.com/**', (r) => r.abort());
 await page.route('**/nominatim.openstreetmap.org/**', (r) => {
   const q = decodeURIComponent(new URL(r.request().url()).searchParams.get('q') || '');
   // « ouest » contient « est » : le discriminant doit être le nom du point.
-  const p = /point a/i.test(q) ? A : B;
+  const p = /point a/i.test(q) ? A : /point d/i.test(q) ? D : B;
   r.fulfill({ status: 200, contentType: 'application/json',
     body: JSON.stringify([{ display_name: p.label, lat: String(p.lat), lon: String(p.lng) }]) });
 });
@@ -239,9 +253,10 @@ async function saisirAller() {
    vide. Le seul signal fiable est un verdict rendu, ou une erreur montrée. */
 async function attendreFinAnalyse() {
   await page.waitForFunction(() => {
-    const t = document.getElementById('vTitle').textContent;
+    const t = document.getElementById('bilanGrand')       // UX V1
+           || document.getElementById('vTitle');          // version d'avant l'UX V1
     const e = document.getElementById('err');
-    return (t && t.length > 0) || !e.classList.contains('hide');
+    return (t && t.textContent.length > 0) || !e.classList.contains('hide');
   }, null, { timeout: 20000 });
 }
 
@@ -253,18 +268,104 @@ async function analyser() {
   }
 }
 
+/* Empreinte du résultat lisible SUR LES DEUX VERSIONS — avant et après l'UX
+   V1. Elle ne compare que ce que les deux savent montrer : le nombre de zones,
+   leur niveau, et pour chacune la distance, la longueur et l'heure affichées.
+   Les valeurs exactes se comparent ailleurs, sur les charges utiles réseau. */
 async function etatResultat() {
-  return page.evaluate(() => ({
-    titre: document.getElementById('vTitle').textContent,
-    km: document.getElementById('sDist').textContent,
-    min: document.getElementById('sTime').textContent,
-    zones: document.getElementById('sZones').textContent,
-    liste: [...document.querySelectorAll('#zoneList li')].map((li) => li.innerText.replace(/\s+/g, ' ').trim()),
-  }));
+  return page.evaluate(() => {
+    const nombres = (t) => (t.match(/[\d]+[,.]?[\d]*\s*(?:km|m)\b/g) || []).join(' | ');
+    const cartes = [...document.querySelectorAll('.zc')];
+    let zones;
+    if (cartes.length) {                                   // UX V1
+      zones = cartes.map((c) => ({
+        niveau: ['low', 'moderate', 'high'].find((k) => c.classList.contains(k)),
+        heure: (c.querySelector('.heure').textContent.match(/\d{2}:\d{2}/) || [''])[0],
+        ou: nombres(c.querySelector('.ou').textContent),
+      }));
+    } else {                                               // version d'avant
+      zones = [...document.querySelectorAll('#zoneList li')].map((li) => ({
+        niveau: ['low', 'moderate', 'high'].find(
+          (k) => li.querySelector('.dot') && li.querySelector('.dot').classList.contains(k)),
+        heure: ((li.querySelector('.zk') || { textContent: '' }).textContent
+          .match(/\d{2}:\d{2}/) || [''])[0],
+        ou: nombres((li.querySelector('.zt span') || { textContent: '' }).textContent),
+      }));
+    }
+    zones = zones.filter((z) => z.niveau).sort((a, b) => a.ou.localeCompare(b.ou));
+    return { nZones: zones.length, zones };
+  });
 }
 
 await page.goto(base + '/index.html');
 console.log(`\nRadius aller/retour — racine ${RACINE}, scénario ${SCENARIO}\n`);
+
+/* ---------- scénario « riche » : trois niveaux dans un seul trajet ---------- */
+if (SCENARIO === 'riche') {
+  await choisir('from', 'Point A est');
+  await choisir('to', 'Point D sud');
+  const [d0, h0] = DEPART_RICHE.split('T');
+  await page.fill('#date', d0); await page.fill('#time', h0);
+  await page.click('#analyze');
+  await attendreFinAnalyse();
+  if (await page.isVisible('#err')) throw new Error(await page.textContent('#err'));
+  const res = await etatResultat();
+  fs.writeFileSync(args.sortie || '/dev/stdout', JSON.stringify({
+    resultat: res,
+    route: routes().at(-1)?.corps,
+    elevationPoints: elevations().at(-1)?.corps?.points ?? [],
+    meteoObservations: meteos().at(-1)?.corps?.observations ?? [],
+    appels: { route: routes().length, elevation: elevations().length, meteo: meteos().length },
+  }, null, 2));
+  console.log('RICHE :', JSON.stringify(res));
+  if (args.ux) {
+    const n1r = await page.evaluate(() => {
+      const n = document.querySelector('#result').cloneNode(true);
+      n.querySelectorAll('details, .hide').forEach((x) => x.remove());
+      return n.textContent.replace(/\s+/g, ' ').trim();
+    });
+    const compte = await page.evaluate(() => ({
+      importantes: document.getElementById('zoneCartes').querySelectorAll('.zc').length,
+      faibles: document.getElementById('zoneFaibles').querySelectorAll('.zc').length,
+      boutonVisible: !document.getElementById('voirFaibles').classList.contains('hide'),
+      faiblesCachees: document.getElementById('zoneFaibles').classList.contains('hide'),
+      marques: document.querySelectorAll('#ligneRail .marque').length,
+    }));
+    console.log('\nUX sur trajet à trois niveaux');
+    chk('§8 — les zones importantes sont en tête', compte.importantes >= 2,
+      `${compte.importantes} importante(s)`);
+    chk('§8 — les zones faibles sont repliées derrière un bouton',
+      compte.faibles >= 1 && compte.faiblesCachees && compte.boutonVisible,
+      `${compte.faibles} faible(s)`);
+    chk('§7 — une marque par zone sur la ligne de trajet',
+      compte.marques === compte.importantes + compte.faibles, `${compte.marques} marque(s)`);
+    chk('§8 — aucune zone n’est supprimée des données',
+      compte.importantes + compte.faibles === res.nZones);
+    chk('§21 — pas de jargon malgré trois niveaux',
+      !['DNI', 'W/m²', 'UTC', 'seuil', 'score'].some((j) => n1r.includes(j)));
+    await page.click('#voirFaibles');
+    chk('§8 — le bouton révèle bien les passages faibles',
+      await page.evaluate(() => !document.getElementById('zoneFaibles').classList.contains('hide')));
+    console.log(`\n${ok} contrôle(s) PASS, ${ko} ÉCHEC.`);
+  }
+  if (args.capture) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: `${args.capture}/resultat.png`, fullPage: true });
+    await page.click('#sim');
+    await page.waitForSelector('#tracking:not(.hide)');
+    await page.waitForTimeout(3000);
+    await page.screenshot({ path: `${args.capture}/suivi.png`, fullPage: true });
+    await page.click('#stopTrack');
+    await page.evaluate(() => document.querySelectorAll('details')
+      .forEach((d) => { d.open = true; }));
+    await page.screenshot({ path: `${args.capture}/ouvert.png`, fullPage: true });
+    await page.goto(base + '/index.html');
+    await page.screenshot({ path: `${args.capture}/saisie.png`, fullPage: true });
+    console.log('captures écrites dans ' + args.capture);
+  }
+  await navigateur.close(); serveur.close();
+  process.exit(ko ? 1 : 0);
+}
 
 /* ---------- ALLER (sert aussi de référence au TEST M) ---------- */
 await saisirAller();
@@ -279,9 +380,13 @@ console.log('ALLER de référence :', JSON.stringify(refAller));
 if (SCENARIO === 'aller') {
   fs.writeFileSync(args.sortie || '/dev/stdout', JSON.stringify({
     resultat: refAller,
+    // Charges utiles réseau : ce sont des SORTIES du moteur, aux flottants
+    // près — lat, lng, azimut et instant de passage de chaque zone retenue,
+    // dans l'ordre RANK puis score. Identiques des deux côtés ou le moteur a bougé.
     route: routeAller?.corps,
-    elevationPoints: elevAller?.corps?.points?.length ?? 0,
-    meteoPassages: (meteoAller?.corps?.observations || []).map((o) => o.passageTimeMs),
+    elevationPoints: elevAller?.corps?.points ?? [],
+    meteoObservations: meteoAller?.corps?.observations ?? [],
+    appels: { route: routes().length, elevation: elevations().length, meteo: meteos().length },
   }, null, 2));
   await navigateur.close(); serveur.close();
   process.exit(0);
@@ -292,7 +397,7 @@ chk('aller — origin = A, destination = B',
   Math.abs(routeAller.corps.origin.lat - A.lat) < 1e-9
   && Math.abs(routeAller.corps.destination.lng - B.lng) < 1e-9);
 chk('aller — des zones existent (sinon relief et météo ne seraient jamais appelés)',
-  Number(refAller.zones) > 0, `${refAller.zones} zone(s)`);
+  refAller.nZones > 0, `${refAller.nZones} zone(s)`);
 chk('aller — relief et météo interrogés', elevations().length === 1 && meteos().length === 1);
 
 /* ---------- TEST A / B / C : inversion pure ---------- */
@@ -350,8 +455,6 @@ chk('TEST D — origin = ancien B, destination = ancien A',
   routeRetour.corps.origin.lat === B.lat && routeRetour.corps.origin.lng === B.lng
   && routeRetour.corps.destination.lat === A.lat && routeRetour.corps.destination.lng === A.lng);
 
-const kmRetour = Number(resRetour.km.replace(',', '.'));
-const kmAller = Number(refAller.km.replace(',', '.'));
 chk('TEST E — la géométrie analysée est celle renvoyée par le serveur pour B→A',
   Math.abs(metres(GEOM_RETOUR) - metres(GEOM_ALLER)) > 5000
   && JSON.stringify(resRetour) !== JSON.stringify(refAller),
@@ -380,18 +483,101 @@ chk('TEST F — les passageTimeMs des zones ont été recalculés sur la nouvell
   && !passagesRetour.some((t) => passagesAller.includes(t)));
 
 chk('TEST G — analyze() a bien été rejoué : zones et verdict recalculés',
-  JSON.stringify(resRetour.liste) !== JSON.stringify(refAller.liste)
-  && Number(resRetour.zones) > 0,
-  `retour : ${resRetour.zones} zone(s), ${resRetour.km} km, « ${resRetour.titre} »`);
+  JSON.stringify(resRetour.zones) !== JSON.stringify(refAller.zones)
+  && resRetour.nZones > 0,
+  `retour : ${resRetour.nZones} zone(s)`);
 
 chk('TEST H — nouvel appel Elevation pour le retour',
   elevations().length === avantRetour.elev + 1);
 chk('TEST I — nouvel appel Open-Meteo pour le retour',
   meteos().length === avantRetour.meteo + 1);
 
-const journalTexte = await page.evaluate(() => document.getElementById('log').innerText);
+const journalTexte = await page.evaluate(() => document.getElementById('log').textContent);
 chk('TEST H/I — le journal du retour ne cumule pas les appels de l’aller',
   /Relief — 1 requête\(s\)/.test(journalTexte) && /Weather — 1 requête\(s\)/.test(journalTexte));
+
+/* ---- UX V1 : les sept questions de §25, sans ouvrir un seul repli ---- */
+console.log('\nUX V1 — l’écran principal répond seul');
+
+/* Texte du niveau 1 : ce qui est visible SANS ouvrir un <details>, et sans les
+   blocs masqués. C'est là-dessus que porte le contrôle de jargon. */
+async function texteNiveau1(sel) {
+  return page.evaluate((s2) => {
+    const n = document.querySelector(s2).cloneNode(true);
+    n.querySelectorAll('details').forEach((d) => d.remove());
+    n.querySelectorAll('.hide').forEach((d) => d.remove());
+    return n.textContent.replace(/\s+/g, ' ').trim();
+  }, sel);
+}
+
+const n1 = await texteNiveau1('#result');
+
+chk('§25.1 — « y a-t-il quelque chose d’important ? » répondu en clair',
+  /période|passage|Rien d.{1,3}important/i.test(n1),
+  (await page.textContent('#bilanGrand')).slice(0, 62));
+chk('§25.2 — « dans combien de temps ? »', /min après le départ/.test(n1));
+chk('§25.3 — « pendant combien de temps ? »',
+  /pendant ~\d+ min|~\d+ min concernées/.test(n1));
+chk('§25.4 — « de face ou sur le côté ? »',
+  /dans l.{1,3}axe|champ de vision|sur la (gauche|droite)/i.test(n1));
+chk('§25.5 — « le relief le masque-t-il ? »',
+  /Relief naturel : (horizon dégagé|soleil masqué|non vérifié)/.test(n1));
+chk('§25.6 — « où dans le trajet ? »',
+  (await page.evaluate(() => document.querySelectorAll('#ligneRail .marque').length)) > 0
+  && /à partir de .* du départ/.test(n1));
+chk('§25.7 — « comment lancer le retour ? »', /Trajet retour/.test(n1));
+
+/* §21 — le jargon ne doit plus exister au niveau 1. Il n'a pas disparu :
+   il est descendu au niveau 3, ce que le contrôle suivant vérifie. */
+const JARGON = ['DNI', 'W/m²', 'UTC', 'delta', 'seuil', 'provider', 'score',
+                'terrainOcclusion', 'weatherContext', 'startD', 'budget d’appels',
+                'Éblouissement fort', 'Éblouissement modéré'];
+const fuites = JARGON.filter((j) => n1.includes(j));
+chk('§21 — aucun terme de laboratoire sur l’écran principal',
+  fuites.length === 0, fuites.length ? 'fuites : ' + fuites.join(', ') : 'aucun');
+
+const tech = await page.evaluate(() => document.getElementById('tech').textContent);
+const absents = ['DNI', 'W/m²', 'startD', 'endD', 'startAt', 'delta', 'score',
+                 'provider', 'seuil', 'observateur', 'validTime', 'Cap',
+                 'niveau d’exposition géométrique'].filter((j) => !tech.includes(j));
+chk('§24-L — rien n’est perdu : le debug est intégralement dans Détails techniques',
+  absents.length === 0, absents.length ? 'manquants : ' + absents.join(', ') : 'tout est là');
+
+chk('§14 — le journal est dans Détails techniques, plus sur la page principale',
+  await page.evaluate(() => document.getElementById('tech')
+    .contains(document.getElementById('log'))));
+chk('§2 — tous les replis sont fermés par défaut',
+  await page.evaluate(() => [...document.querySelectorAll('details')].every((d) => !d.open)));
+chk('§6 — la vue pare-brise n’est plus l’élément principal',
+  await page.evaluate(() => document.getElementById('tech')
+    .contains(document.getElementById('glassSvg'))));
+chk('§8 — les zones faibles sont derrière un bouton, jamais supprimées',
+  await page.evaluate(() => {
+    const cachees = document.getElementById('zoneFaibles');
+    const nF = cachees.querySelectorAll('.zc').length;
+    return nF === 0 || (cachees.classList.contains('hide')
+      && !document.getElementById('voirFaibles').classList.contains('hide'));
+  }));
+/* La propriété à tenir n'est pas « la pastille porte du texte » — une pastille
+   est vide par nature — mais « la couleur n'est jamais seule porteuse du
+   sens ». Donc : toute pastille a un mot à côté d'elle, et la ligne de trajet,
+   qui n'est faite que de couleurs, porte une description accessible. */
+chk('§22 — chaque pastille de couleur est accompagnée d’un mot',
+  await page.evaluate(() => [...document.querySelectorAll('.dot')]
+    .every((d) => d.parentElement.textContent.trim().length > 0)));
+chk('§22 — la ligne de trajet, purement colorée, a une description accessible',
+  await page.evaluate(() => {
+    const r = document.getElementById('ligneRail');
+    return (r.getAttribute('aria-label') || '').length > 20
+      && document.getElementById('ligneLegende').textContent.trim().length > 0;
+  }),
+  (await page.getAttribute('#ligneRail', 'aria-label') || '').slice(0, 70));
+
+await page.setViewportSize({ width: 360, height: 780 });
+const deborde = await page.evaluate(() =>
+  document.documentElement.scrollWidth > document.documentElement.clientWidth);
+chk('§22 — aucun débordement horizontal à 360 px', !deborde);
+await page.setViewportSize({ width: 390, height: 844 });
 
 /* ---------- TEST J : Google Maps ---------- */
 console.log('\nTEST J — Google Maps reçoit le nouveau sens');
@@ -415,11 +601,11 @@ await page.click('#sim');
 await page.waitForSelector('#tracking:not(.hide)');
 await page.waitForTimeout(4000);
 const zonesLive = await page.evaluate(() => [...document.querySelectorAll('#liveZones li')]
-  .map((li) => li.innerText.replace(/\s+/g, ' ').trim()));
+  .map((li) => li.textContent.replace(/\s+/g, ' ').trim()));
 chk('TEST K — le mode test rejoue les zones du trajet B→A',
-  zonesLive.length === Number(zonesSim.zones) && zonesLive.length > 0,
+  zonesLive.length === zonesSim.nZones && zonesLive.length > 0,
   `${zonesLive.length} zone(s) à l’écran`);
-const jSim = await page.evaluate(() => document.getElementById('log').innerText);
+const jSim = await page.evaluate(() => document.getElementById('log').textContent);
 chk('TEST K — une annonce est partie sur ce trajet', /Annonce 1\/4/.test(jSim));
 
 /* ---------- TEST §12 : retour depuis l’écran de suivi ---------- */
@@ -456,7 +642,7 @@ await contexte.setGeolocation(surBrancheBC);
 await page.click('#start');
 await page.waitForSelector('#tracking:not(.hide)', { timeout: 10000 });
 await page.waitForTimeout(2500);
-const grand = await page.textContent('#lBig');
+const grand = await page.textContent('#suivTitre');
 chk('TEST L — le suivi raccroche la position sur la route retour',
   grand !== 'Hors itinéraire' && grand !== 'En attente du GPS…', `« ${grand} »`);
 await page.click('#stopTrack');
@@ -472,7 +658,7 @@ chk('§17 — message explicite',
   /Impossible d.{1,3}analyser le trajet retour/.test(messageErreur), messageErreur.slice(0, 90));
 chk('§17 — l’ancien résultat n’est pas réaffiché comme s’il était le retour',
   await page.isHidden('#result'));
-const zonesRestantes = await page.evaluate(() => document.querySelectorAll('#zoneList li').length);
+const zonesRestantes = await page.evaluate(() => document.querySelectorAll('.zc').length);
 chk('§17 — aucune zone de l’ancien trajet ne subsiste à l’écran', zonesRestantes === 0);
 await page.click('#analyze');                       // réessai immédiat
 await attendreFinAnalyse();
