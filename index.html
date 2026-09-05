@@ -853,6 +853,48 @@ function bestDeparture(route, preferredMs, windowMin = 90, stepMin = 10) {
   return { ref, best: better[0] || null };
 }
 
+/* ---- l'échéance de tout appel réseau ----
+   Relevé du 5 septembre 2026, 17:26 à La Réunion : le bouton est resté
+   « Calcul en cours… », grisé, sans un mot. Les journaux Vercel montrent
+   pourtant les trois appels sortis et répondus dans la seconde — /api/route,
+   /api/elevation, /api/weather en 200 — une minute après un 502 sur ce même
+   /api/weather. Le serveur avait fini ; la page, non.
+
+   Tout ce qui suit le dernier `await` de analyserTrajet est synchrone, et une
+   exception y serait rattrapée puis dite. Un bouton figé sans message ne peut
+   donc venir que d'une attente qui ne se termine jamais : un corps de réponse
+   qui n'arrive pas au bout, et `await r.json()` qui, lui, n'a pas de fin. Un
+   `try/catch` n'y peut rien — il attrape un rejet, pas une absence.
+
+   D'où la règle : aucun appel réseau sans échéance. Ces durées bornent une
+   attente, elles ne mesurent rien : ce ne sont pas des seuils scientifiques et
+   elles ne se mêlent jamais à T. */
+const DELAI_ROUTE_MS = 20000;    // la route est la source de vérité du trajet
+const DELAI_RELIEF_MS = 12000;   // couche passive : son retard ne vaut pas un blocage
+const DELAI_METEO_MS = 12000;    // idem
+const DELAI_GEOCODE_MS = 12000;
+
+/** fetch borné dans le temps. Le corps est lu SOUS la même échéance : c'est là
+    que l'attente s'était perdue, pas dans l'établissement de la connexion. */
+async function fetchBorne(url, options, delaiMs, quoi) {
+  const ctrl = new AbortController();
+  const minuteur = setTimeout(() => ctrl.abort(), delaiMs);
+  try {
+    const r = await fetch(url, { ...options, signal: ctrl.signal });
+    const texte = await r.text();
+    let json = null;
+    try { json = JSON.parse(texte); } catch {}
+    return { ok: r.ok, status: r.status, json };
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      throw new Error(`${quoi} n\u2019a pas répondu en ${Math.round(delaiMs / 1000)} s.`);
+    }
+    throw new Error(`${quoi} injoignable : ${e && e.message ? e.message : 'erreur réseau'}.`);
+  } finally {
+    clearTimeout(minuteur);
+  }
+}
+
 /* ---- relief : l'appel réseau, volontairement rare ----
    Le relief n'est jamais interrogé sur toute la route : seulement au point
    représentatif de chaque zone déjà détectée, et jamais plus de RELIEF_MAX_ZONES
@@ -876,15 +918,13 @@ async function verifierRelief(result, compteur) {
 
   let rep = null;
   try {
-    const r = await fetch('/api/elevation', {
+    compteur.requetes++; compteur.points += points.length;
+    const { ok, status, json: j } = await fetchBorne('/api/elevation', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ points }),
-    });
-    compteur.requetes++; compteur.points += points.length;
-    let j = null;
-    try { j = await r.json(); } catch {}
-    if (!r.ok) throw new Error(j?.error || ('HTTP ' + r.status));
+    }, DELAI_RELIEF_MS, 'Google Elevation');
+    if (!ok) throw new Error(j?.error || ('HTTP ' + status));
     if (j?.provider !== 'google-elevation') throw new Error('fournisseur inattendu');
     rep = j;
   } catch (e) {
@@ -941,15 +981,13 @@ async function verifierMeteo(result, compteur) {
   const observations = zones.map((z) => ({ lat: z.lat, lng: z.lng, passageTimeMs: z.at }));
 
   try {
-    const r = await fetch('/api/weather', {
+    compteur.requetes++; compteur.zones += zones.length;
+    const { ok, status, json: j } = await fetchBorne('/api/weather', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ observations }),
-    });
-    compteur.requetes++; compteur.zones += zones.length;
-    let j = null;
-    try { j = await r.json(); } catch {}
-    if (!r.ok) throw new Error(j?.error || ('HTTP ' + r.status));
+    }, DELAI_METEO_MS, 'Open-Meteo');
+    if (!ok) throw new Error(j?.error || ('HTTP ' + status));
     if (j?.provider !== 'open-meteo') throw new Error('fournisseur inattendu');
     if (!Array.isArray(j.resultats) || j.resultats.length !== zones.length) {
       throw new Error(`${j.resultats?.length ?? 0} résultat(s) pour ${zones.length} zone(s)`);
@@ -988,9 +1026,10 @@ function reporterMeteo(anciennes, nouvelles) {
    ═══════════════════════════════════════════════════════════ */
 async function geocode(q) {
   const u = `https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=fr&q=${encodeURIComponent(q)}`;
-  const r = await fetch(u, { headers: { Accept: 'application/json' } });
-  if (!r.ok) throw new Error('Recherche d\u2019adresse indisponible.');
-  return (await r.json()).map((x) => ({
+  const { ok, json } = await fetchBorne(u, { headers: { Accept: 'application/json' } },
+    DELAI_GEOCODE_MS, 'La recherche d\u2019adresse');
+  if (!ok || !Array.isArray(json)) throw new Error('Recherche d\u2019adresse indisponible.');
+  return json.map((x) => ({
     label: x.display_name, lat: +x.lat, lng: +x.lon,
   }));
 }
@@ -1095,7 +1134,7 @@ const SNAP_LOG_M = 250;    // au-delà, l'écart de raccrochage mérite d'être 
 const SNAP_MAX_M = 2000;   // au-delà, ce n'est plus du raccrochage : on refuse
 
 async function fetchRoute(a, b, departureMs) {
-  const r = await fetch('/api/route', {
+  const { ok, json: j } = await fetchBorne('/api/route', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -1103,11 +1142,9 @@ async function fetchRoute(a, b, departureMs) {
       destination: { lat: b.lat, lng: b.lng },
       departureMs,
     }),
-  });
+  }, DELAI_ROUTE_MS, 'Google Routes');
 
-  let j = null;
-  try { j = await r.json(); } catch {}
-  if (!r.ok) {
+  if (!ok) {
     throw new Error(j?.error || 'Calcul Google Routes indisponible.');
   }
   // Le fournisseur se lit sur la réponse du serveur, avant normalisation :
@@ -1395,11 +1432,14 @@ async function analyserTrajet(departureMs, options = {}) {
 
   state.analyseEnCours = true;
   verrouillerCommandes(true, origine);
-  // Rien du trajet précédent ne survit à cette ligne : ni route, ni zones, ni
-  // relief, ni météo, ni suivi en cours, ni compteurs d'appels.
-  resetAnalyseTrajet();
 
   try {
+    // Rien du trajet précédent ne survit à cette ligne : ni route, ni zones, ni
+    // relief, ni météo, ni suivi en cours, ni compteurs d'appels.
+    // Elle est DANS le try : hors de lui, une exception ici — un identifiant
+    // d'élément disparu, par exemple — laissait le verrou posé et le bouton
+    // grisé à vie, sans un mot. Une panne doit se dire, jamais figer la page.
+    resetAnalyseTrajet();
     log(`Requête ${origine} — origin ${latlng(state.from)} → destination ${latlng(state.to)}, `
       + `départ ${fmtTime(departureMs)}.`);
     state.route = await fetchRoute(state.from, state.to, departureMs);

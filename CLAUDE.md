@@ -287,6 +287,41 @@ Tests ajoutés : `test-episodes.mjs`, 53 contrôles sur du code extrait de
 `index.html` à l'exécution, plus deux scénarios navigateur — « riche » pour la
 fusion, « moments » pour la séparation.
 
+## Aucune attente sans échéance
+
+Décision du 5 septembre 2026, prise sur un relevé de terrain : à 17:26, le
+bouton est resté « Calcul en cours… », grisé, sans un mot. Les journaux Vercel
+montrent pourtant les trois appels sortis et répondus dans la seconde — route,
+elevation, weather en 200 — une minute après un 502 sur ce même `/api/weather`.
+Le serveur avait fini ; la page, non.
+
+Tout ce qui suit le dernier `await` de `analyserTrajet()` est synchrone, et une
+exception y serait rattrapée puis affichée. Un bouton figé sans message ne
+pouvait donc venir que d'une attente sans fin : un corps de réponse qui n'arrive
+pas au bout, et `await r.json()` qui n'a pas de fin. **Un `try/catch` n'y peut
+rien : il attrape un rejet, pas une absence.**
+
+- tout appel réseau passe par `fetchBorne()`, jamais par `fetch()` nu ;
+- le **corps** est lu sous la même échéance que la connexion — c'est là que
+  l'attente s'était perdue ;
+- `DELAI_ROUTE_MS`, `DELAI_RELIEF_MS`, `DELAI_METEO_MS` et `DELAI_GEOCODE_MS`
+  bornent une attente, ils ne mesurent rien : ce ne sont pas des seuils
+  scientifiques et ils ne se mêlent jamais à `T` ;
+- une échéance dépassée est **nommée avec sa durée**, jamais avalée.
+
+**Le relief et la météo ne peuvent jamais bloquer un résultat.** Ce sont des
+couches passives : leur retard dégrade leur propre statut en `unknown` et le
+trajet s'affiche quand même. Une couche qui n'entre dans aucune décision ne peut
+pas non plus empêcher d'en rendre une.
+
+**La remise à zéro est dans le `try`.** Hors de lui, une exception dans
+`resetAnalyseTrajet()` laissait le verrou posé et le bouton grisé à vie. Toute
+la chaîne entre la pose du verrou et le `finally` qui le retire doit rester
+gardée : une panne se dit, elle ne fige pas la page.
+
+Banc : `test-figeage.mjs`, 22 contrôles, dont un serveur qui ne répond jamais et
+ne ferme jamais la socket — la seule façon de reproduire ce qu'a vu le téléphone.
+
 ## La règle de parole
 
 Le produit parle **par-dessus un GPS qui parle déjà**, et aucun système

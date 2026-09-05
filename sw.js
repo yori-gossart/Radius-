@@ -9,7 +9,7 @@
 // jamais supprimé : un index.html périmé pouvait revenir hors ligne avec
 // d'anciens seuils T, et les relevés de terrain porteraient sur autre chose
 // que ce qu'on croit avoir déployé.
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CACHE = `radius-${VERSION}`;
 const FICHIERS = ['./', 'index.html', 'manifest.json', 'icon.svg'];
 
