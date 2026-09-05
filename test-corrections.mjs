@@ -434,6 +434,114 @@ if (veut('R-007')) {
   await page.click('#stopTrack');
 }
 
+/* R-010 — le cache du service worker doit porter une version, et ne jamais
+   servir /api/*. Avant : un nom fixe, donc aucun ancien cache n'était jamais
+   supprimé et un index.html périmé pouvait revenir avec d'anciens seuils T. */
+if (veut('R-010')) {
+  console.log('\n== R-010 — cache du service worker versionné ==');
+  await page.goto(base + '/index.html');
+  await page.waitForFunction(() => navigator.serviceWorker.controller !== null
+    || navigator.serviceWorker.ready, null, { timeout: 15000 }).catch(() => {});
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  // Le nettoyage se fait à l'activation : il faut donc désinscrire le worker,
+  // planter le cache périmé, puis laisser le nouveau s'installer.
+  await page.evaluate(async () => {
+    for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+    const c = await caches.open('eblouissement-v1');
+    await c.put('/index.html', new Response('<html>version périmée</html>',
+      { headers: { 'content-type': 'text/html' } }));
+  });
+  await page.reload();
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.waitForTimeout(1200);
+  const caches1 = await page.evaluate(() => caches.keys());
+  chk('R-010 le nom du cache porte une version',
+    caches1.some((n) => /v\d/.test(n)), caches1.join(', ') || '(aucun)');
+  chk('R-010 aucun cache d’une version antérieure ne survit',
+    !caches1.includes('eblouissement-v1'), caches1.join(', '));
+  const apiEnCache = await page.evaluate(async () => {
+    for (const n of await caches.keys()) {
+      const c = await caches.open(n);
+      for (const r of await c.keys()) if (r.url.includes('/api/')) return r.url;
+    }
+    return null;
+  });
+  chk('R-010 aucun endpoint /api/ n’est mis en cache', apiEnCache === null, apiEnCache || 'aucun');
+  const servi = await page.evaluate(() => document.getElementById('analyze') !== null);
+  chk('R-010 la page servie est bien la vraie application', servi);
+}
+
+/* R-013 — la voix doit pouvoir être coupée sans arrêter le suivi. */
+if (veut('R-013')) {
+  console.log('\n== R-013 — interrupteur de voix ==');
+  await page.goto(base + '/index.html');
+  await page.addInitScript(() => { window.__dits = []; });
+  await page.goto(base + '/index.html');
+  await page.evaluate(() => {
+    window.__dits = [];
+    const vrai = window.speechSynthesis.speak.bind(window.speechSynthesis);
+    window.speechSynthesis.speak = (u) => { window.__dits.push(u.text); return vrai(u); };
+  });
+  await choisir('from', 'Point A'); await choisir('to', 'Point F');
+  await page.fill('#date', '2026-12-22'); await page.fill('#time', '06:00');
+  await page.click('#analyze'); await attendreFin();
+  chk('R-013 un interrupteur de voix existe', await page.isVisible('#voix'),
+    await page.textContent('#voix').catch(() => '(absent)'));
+  await page.click('#voix');                    // couper
+  await page.click('#sim');
+  await page.waitForSelector('#tracking:not(.hide)');
+  await page.waitForFunction(() => /Simulation terminée/.test(
+    document.getElementById('log').textContent), null, { timeout: 60000 });
+  const ditsCoupe = await page.evaluate(() => window.__dits.slice());
+  const jCoupe = await journalTexte();
+  chk('R-013 voix coupée : aucune synthèse ne part', ditsCoupe.length === 0,
+    ditsCoupe.join(' | ') || 'aucune');
+  chk('R-013 voix coupée : les annonces restent détectées et journalisées',
+    /Annonce \d\/4/.test(jCoupe));
+  await page.click('#stopTrack');
+  await page.click('#voix');                    // rallumer
+  await page.evaluate(() => { window.__dits = []; });
+  await page.click('#sim');
+  await page.waitForSelector('#tracking:not(.hide)');
+  await page.waitForTimeout(4000);
+  const ditsOn = await page.evaluate(() => window.__dits.slice());
+  chk('R-013 voix rallumée : la synthèse repart', ditsOn.length > 0,
+    ditsOn.slice(0, 2).join(' | ') || 'aucune');
+  await page.click('#stopTrack');
+}
+
+/* R-014 — « Ma position » devenue arrivée ne doit pas se lire comme la
+   position actuelle : c'est le point figé capturé au départ. */
+if (veut('R-014')) {
+  console.log('\n== R-014 — « Ma position » devenue arrivée ==');
+  await page.goto(base + '/index.html');
+  await page.evaluate(() => {
+    navigator.geolocation.getCurrentPosition = (ok) => ok({
+      coords: { latitude: -20.88, longitude: 55.45 }, timestamp: Date.now() });
+  });
+  await page.click('#useHere');
+  await page.waitForFunction(() => document.getElementById('from').value === 'Ma position',
+    null, { timeout: 6000 });
+  await choisir('to', 'Point B');
+  await page.fill('#date', '2026-12-22'); await page.fill('#time', '06:15');
+  await page.click('#analyze'); await attendreFin();
+  const titreAller = await page.textContent('#trajetTitre');
+  await page.click('#retourResult');
+  await page.waitForSelector('#retourPanneau:not(.hide)');
+  const sens = await page.textContent('#retourSens');
+  chk('R-014 le panneau ne présente pas le point figé comme la position actuelle',
+    !/Ma position/.test(sens) && /enregistrée|figée|au départ/i.test(sens), sens);
+  await page.fill('#retourTime', '17:56');
+  await page.click('#retourCalculer'); await attendreFin();
+  const titreRetour = await page.textContent('#trajetTitre');
+  chk('R-014 l’écran de résultat du retour est explicite',
+    !/→ Ma position/.test(titreRetour), `${titreAller}  →  ${titreRetour}`);
+  const corps = routes().at(-1).corps;
+  chk('R-014 les coordonnées ne bougent pas',
+    corps.destination.lat === -20.88 && corps.destination.lng === 55.45,
+    JSON.stringify(corps.destination));
+}
+
 console.log(`\n${ok} contrôle(s) PASS, ${ko} ÉCHEC.`);
 if (ko) console.log('Échecs : ' + echecs.join(' | '));
 await nav.close(); serveur.close();

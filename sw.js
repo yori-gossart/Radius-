@@ -1,6 +1,16 @@
 // Service worker minimal. Sur Android, Chrome n autorise les notifications
 // QUE via un service worker — d ou ce fichier, qui ne fait rien d autre.
-const CACHE = 'eblouissement-v1';
+//
+// Changer VERSION à chaque déploiement dont on veut être sûr qu'il chasse
+// l'ancien cache. La page elle-même reste en « réseau d'abord » : un
+// utilisateur en ligne reçoit toujours la dernière version.
+// Le nom du cache porte une version, et `activate` supprime tout ce qui ne
+// s'appelle pas exactement comme lui. Sans cela, aucun ancien cache n'était
+// jamais supprimé : un index.html périmé pouvait revenir hors ligne avec
+// d'anciens seuils T, et les relevés de terrain porteraient sur autre chose
+// que ce qu'on croit avoir déployé.
+const VERSION = 'v3';
+const CACHE = `radius-${VERSION}`;
 const FICHIERS = ['./', 'index.html', 'manifest.json', 'icon.svg'];
 
 // Tout le calcul est local une fois l'itinéraire chargé, mais sans cache
@@ -26,6 +36,9 @@ self.addEventListener('fetch', (event) => {
   let url;
   try { url = new URL(req.url); } catch { return; }
   if (url.origin !== self.location.origin) return;
+  // Les endpoints ne passent jamais par le cache, quelle que soit la méthode :
+  // une altitude ou une météo servie depuis le cache serait un relevé faux.
+  if (url.pathname.startsWith('/api/')) return;
 
   // La page elle-même : réseau d'abord. Les seuils de T changent d'une
   // sortie à l'autre ; servir une version en cache ferait relever le terrain

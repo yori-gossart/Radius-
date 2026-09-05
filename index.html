@@ -300,6 +300,9 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
     <button class="ghost mini" id="openMapsResult">Ouvrir Maps</button>
     <button class="ghost mini" id="back">Modifier le trajet</button>
   </div>
+  <div class="row" style="margin-bottom:14px">
+    <button class="ghost mini" id="voix" aria-pressed="true">🔊 Voix activée</button>
+  </div>
 
   <details id="aideModes">
     <summary>Suivi réel ou test&nbsp;?</summary>
@@ -338,7 +341,8 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
   <div class="field">
     <button class="stop" id="stopTrack">Arrêter le suivi</button>
   </div>
-  <div class="field">
+  <div class="field row">
+    <button class="ghost mini" id="voixSuivi" aria-pressed="true">🔊 Voix activée</button>
     <button class="ghost mini" id="retourTrack">↔ Préparer le retour</button>
   </div>
   <div id="ancreRetourTrack"></div>
@@ -1104,6 +1108,7 @@ const state = { from: null, to: null, route: null, result: null, watch: null,
                 lastFixMs: 0, lastIdx: null, health: null, mode: null,
                 analyseEnCours: false, suivi: null, trajet: null, demarrage: null,
                 positionEchouee: false, suiviDepuisMs: 0, simHorlogeMs: NaN,
+                voix: true,
                 relief: { requetes: 0, points: 0 },
                 meteo: { requetes: 0, zones: 0 } };
 
@@ -1224,9 +1229,19 @@ function inverserEndpoints() {
   // « Ma position » désigne le point capturé au moment du clic, pas le
   // téléphone maintenant. Devenu une arrivée, il reste ce point figé : le
   // dire, plutôt que de laisser croire que le GPS sera relu.
+  // « Ma position » désigne le point capturé au moment du clic. Devenu une
+  // arrivée, il reste ce point figé : le libellé le dit, sinon l'utilisateur
+  // lit « retour vers là où je suis » — ce que Radius ne fait pas.
   if (state.to && state.to.label === 'Ma position') {
+    state.to.labelAffiche = 'Position enregistrée au départ';
+    $('to').value = state.to.labelAffiche;
     log(`« Ma position » devient l\u2019arrivée : point figé ${latlng(state.to)}. `
       + 'La position actuelle du téléphone n\u2019est pas relue.');
+  }
+  // Redevenu un départ, il reprend son nom : c'est bien de là qu'on part.
+  if (state.from && state.from.label === 'Ma position' && state.from.labelAffiche) {
+    delete state.from.labelAffiche;
+    $('from').value = 'Ma position';
   }
 }
 
@@ -1456,7 +1471,7 @@ function ouvrirPanneauRetour(depuis) {
   }
   // Le sens montré est celui du retour, avant toute inversion : annuler ne
   // doit rien avoir changé.
-  $('retourSens').textContent = `${nomCourt(state.to)} → ${nomCourt(state.from)}`;
+  $('retourSens').textContent = `${nomCourt(state.to)} → ${nomArrivee(state.from)}`;
   $('retourAvis').classList.toggle('hide', depuis !== 'suivi');
 
   // La date par défaut est celle de l'aller, jamais aujourd'hui : c'est tout
@@ -1538,7 +1553,15 @@ $('back').onclick = () => {
    complète de Nominatim. */
 function nomCourt(p) {
   if (!p) return '?';
-  return String(p.label || '').split(',')[0].trim() || '?';
+  return String(p.labelAffiche || p.label || '').split(',')[0].trim() || '?';
+}
+
+/** Nom d'un point vu comme ARRIVÉE. « Ma position » est le point capturé au
+    moment du clic : devenu une destination, il ne désigne plus « là où je
+    suis », et le dire évite un contresens que la géométrie ne corrigera pas. */
+function nomArrivee(p) {
+  if (p && p.label === 'Ma position') return 'Position enregistrée au départ';
+  return nomCourt(p);
 }
 
 /* Hier, aujourd'hui et demain s'affichaient à l'identique : « 06:15 → 06:32 »
@@ -1759,7 +1782,7 @@ function render() {
 
   // ---- niveau 1 : le trajet ----
   const arrivee = r.departureMs + route.totalS * 1000;
-  $('trajetTitre').textContent = `${nomCourt(state.from)} → ${nomCourt(state.to)}`;
+  $('trajetTitre').textContent = `${nomCourt(state.from)} → ${nomArrivee(state.to)}`;
   const lendemain = memeJour(r.departureMs, arrivee) ? '' : ' <span class="jplus">+1 j</span>';
   $('trajetMeta').innerHTML = `${fmtJour(r.departureMs)} · ${fmtTime(r.departureMs)} → `
     + `${fmtTime(arrivee)}${lendemain} · ${fmtDuree(route.totalS)} · `
@@ -1952,7 +1975,30 @@ const MAX_ALERTS = 4;
 const COOLDOWN_MS = 180000;
 let alertCount = 0, lastAlertMs = 0;
 
+/* La voix pouvait gêner sans qu'on puisse rien y faire : le seul recours en
+   roulant était d'arrêter le suivi, donc de perdre la fonction entière.
+   L'interrupteur ne touche QUE la synthèse — détection, zones, suivi,
+   affichage et journal continuent exactement comme avant. */
+function majBoutonsVoix() {
+  const libelle = state.voix ? '🔊 Voix activée' : '🔇 Voix coupée';
+  for (const id of ['voix', 'voixSuivi']) {
+    const b = $(id);
+    b.textContent = libelle;
+    b.setAttribute('aria-pressed', String(state.voix));
+  }
+}
+
+function basculerVoix() {
+  state.voix = !state.voix;
+  if (!state.voix) { try { speechSynthesis.cancel(); } catch {} }
+  majBoutonsVoix();
+  log(state.voix ? 'Voix réactivée.' : 'Voix coupée — les annonces restent détectées et journalisées.');
+}
+$('voix').onclick = basculerVoix;
+$('voixSuivi').onclick = basculerVoix;
+
 function speak(text) {
+  if (!state.voix) return;
   try {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'fr-FR'; u.rate = 1.05; u.volume = 1;
