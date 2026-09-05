@@ -396,6 +396,7 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
       <svg viewBox="0 0 400 210" id="glassSvg" aria-label="Position du soleil dans le champ de vision"></svg>
     </div>
     <p class="tech" id="techGlobal">Aucun trajet analysé.</p>
+    <p class="tech" id="techEpisodes"></p>
     <div id="techZones"></div>
     <p class="tech" style="margin-top:14px"><b>Journal</b></p>
     <ul class="zones" id="log"><li><div class="zt"><span>Rien pour l’instant.</span></div></li></ul>
@@ -1136,7 +1137,7 @@ const state = { from: null, to: null, route: null, result: null, watch: null,
                 lastFixMs: 0, lastIdx: null, health: null, mode: null,
                 analyseEnCours: false, suivi: null, trajet: null, demarrage: null,
                 positionEchouee: false, suiviDepuisMs: 0, simHorlogeMs: NaN,
-                voix: true,
+                voix: true, episodes: [], plan: [],
                 relief: { requetes: 0, points: 0 },
                 meteo: { requetes: 0, zones: 0 } };
 
@@ -1304,6 +1305,7 @@ function viderAffichageTrajet() {
   $('liveZones').innerHTML = '';
   $('glassSvg').innerHTML = ''; $('glassVal').textContent = '';
   $('techGlobal').textContent = 'Aucun trajet analysé.';
+  $('techEpisodes').textContent = '';
   $('techZones').innerHTML = '';
   $('attribMeteo').classList.add('hide'); $('attribMeteo').textContent = '';
   fermerPanneauRetour();
@@ -1325,6 +1327,7 @@ function resetAnalyseTrajet() {
   state.advice = null;
   state.relief = { requetes: 0, points: 0 };
   state.meteo = { requetes: 0, zones: 0 };
+  state.episodes = []; state.plan = [];
   alertCount = 0; lastAlertMs = 0;
   viderAffichageTrajet();
 }
@@ -1806,6 +1809,7 @@ function fmtDuree(secondes) {
 
 const MOT_NIVEAU = { high: 'Élevé', moderate: 'Modéré', low: 'Faible' };
 const MOT_NIVEAU_F = { high: 'élevée', moderate: 'modérée', low: 'faible' };
+const MOT_NIVEAU_M = { high: 'élevé', moderate: 'modéré', low: 'faible' };
 
 /* La phrase d'une zone. Descriptive, jamais conclusive : « Éblouissement fort »
    affirmerait une gêne vécue, que rien n'a encore mesurée. On décrit une
@@ -1885,6 +1889,41 @@ function panneauMeteo(z) {
       modifient pas encore l’alerte Radius.</p></div></details>`;
 }
 
+/* Niveau 1 — la carte d'un ÉPISODE. C'est elle que le conducteur lit : un
+   moment, pas une zone. Les zones sources sont dessous, dans un repli. */
+function carteEpisode(ep, r, departureMs) {
+  const delai = Math.max(0, Math.round((ep.startAt - departureMs) / 60000));
+  const expo = Math.round(ep.exposedSeconds / 60);
+  const zoneRepr = r.zones[ep.representativeZoneIndex];
+  const rel = zoneRepr ? etatRelief(zoneRepr) : null;
+  const debut = delai === 0 ? '<b>Dès le départ</b>' : `<b>${delai} min</b> après le départ`;
+  // On dit l'exposition RÉELLE, pas l'étendue : un épisode de dix-sept minutes
+  // dont huit sont exposées ne fait pas dix-sept minutes de soleil.
+  const duree = expo >= 1 ? `, environ <b>${expo} min</b> de soleil` : '';
+  const sources = ep.sourceZoneCount > 1
+    ? `<details><summary>Voir les ${ep.sourceZoneCount} passages détaillés</summary>
+        <div class="dcorps">${ep.sourceZoneIndexes
+          .map((i) => carteZone(r.zones[i], departureMs)).join('')}</div></details>`
+    : ep.sourceZoneIndexes.map((i) => panneauComprendre(r.zones[i])
+        + panneauMeteo(r.zones[i])).join('');
+  const heures = ep.durationMs > 60000
+    ? `${fmtTime(ep.startAt)} → ${fmtTime(ep.endAt)}` : fmtTime(ep.startAt);
+  return `<article class="zc ${ep.maxLevel}" data-episode="${ep.id}">
+    <div class="haut">
+      <span class="heure">${heures}</span>
+      <span class="chip"><span class="dot ${ep.maxLevel}"></span>${MOT_NIVEAU[ep.maxLevel]}</span>
+    </div>
+    <h3>${titreEpisode(ep)}</h3>
+    <p class="quand">${debut}${duree}</p>
+    <p class="ou">à partir de ${fmtKm(ep.startD)} du départ${
+      ep.lengthMeters > 0 ? `, sur ${fmtKm(ep.lengthMeters)}` : ''}</p>
+    ${rel ? `<p class="rel ${rel.classe}"><span class="marq">${rel.marque}</span>${rel.texte}</p>` : ''}
+    ${ep.sourceZoneCount > 1
+      ? `<p class="ou" style="margin:9px 0 0">${ep.sourceZoneCount} passages regroupés</p>` : ''}
+    ${sources}
+  </article>`;
+}
+
 /* Niveau 1 — la carte d'une zone. Quand, quoi, combien de temps, où, relief. */
 function carteZone(z, departureMs) {
   const delai = Math.max(0, Math.round((z.startAt - departureMs) / 60000));
@@ -1907,7 +1946,7 @@ function carteZone(z, departureMs) {
 
 /* La ligne de trajet. Ce n'est pas une carte : c'est l'avancement, pour voir
    d'un coup d'œil si les zones sont au début, au milieu ou à la fin. */
-function dessinerLigne(r, totalM) {
+function dessinerLigne(r, totalM, episodes) {
   const rail = $('ligneRail');
   rail.innerHTML = '';
   if (!totalM || !r.zones.length) {
@@ -1930,12 +1969,15 @@ function dessinerLigne(r, totalM) {
     parts.push(`zone ${MOT_NIVEAU_F[z.level]} ${tiers(z.startD)}`);
   }
   rail.setAttribute('aria-label', 'Position des zones sur le trajet : ' + parts.join(', ') + '.');
+  // Les marques dessinent les ZONES — la vérité géométrique, trous compris.
+  // La légende, elle, compte les MOMENTS : c'est ce que le conducteur retient.
   // Jamais la couleur seule : chaque pastille est doublée d'un mot.
   const compte = { high: 0, moderate: 0, low: 0 };
-  for (const z of r.zones) compte[z.level]++;
+  for (const e of (episodes || [])) compte[e.maxLevel]++;
   $('ligneLegende').innerHTML = ['high', 'moderate', 'low']
     .filter((k) => compte[k])
-    .map((k) => `<span><span class="dot ${k}"></span>${compte[k]} ${MOT_NIVEAU_F[k]}${compte[k] > 1 ? 's' : ''}</span>`)
+    .map((k) => `<span><span class="dot ${k}"></span>${compte[k]} ${
+      compte[k] > 1 ? 'moments' : 'moment'} ${MOT_NIVEAU_M[k]}${compte[k] > 1 ? 's' : ''}</span>`)
     .join('');
 }
 
@@ -1956,6 +1998,33 @@ function remplirTech(r, route) {
     + (r.meteoErreur ? `\n<b>Météo</b> erreur : ${echapper(r.meteoErreur)}` : '')
     + `\n<b>Appels</b> relief ${state.relief.requetes} requête(s) / ${state.relief.points} point(s)`
     + ` · météo ${state.meteo.requetes} requête(s) / ${state.meteo.zones} zone(s)`;
+
+  // §29 — le journal des épisodes. C'est lui qui permettra d'auditer, après
+  // un trajet réel, pourquoi Radius a parlé ou s'est tu.
+  let jep = `<b>Zones scientifiques</b> ${r.zones.length}\n`
+    + `<b>Épisodes construits</b> ${state.episodes.length}`
+    + ` · gap de fusion ${EPISODE_GAP_S} s (constante UX, non calibrée)\n`
+    + `<b>Plafonds</b> MAX_ALERTS ${MAX_ALERTS} · cooldown ${COOLDOWN_MS / 1000} s`
+    + ` · préavis plancher ${MIN_LEAD_SECONDS} s`;
+  for (const e of state.episodes) {
+    const entree = state.plan.find((x) => x.episodeId === e.id);
+    jep += `\n\n<b>${e.id}</b> zones ${e.sourceZoneIndexes.join(',')}`
+      + ` · ${fmtTime(e.startAt)} → ${fmtTime(e.endAt)}\n`
+      + `  max ${e.maxLevel} · dominant ${e.dominantSide}`
+      + ` · face présente ${e.containsFace ? 'oui' : 'non'}`
+      + ` · zone représentative ${e.representativeZoneIndex}\n`
+      + `  étendue ${Math.round(e.durationMs / 1000)} s / ${Math.round(e.lengthMeters)} m`
+      + ` · exposé ${Math.round(e.exposedSeconds)} s / ${Math.round(e.exposedMeters)} m\n`
+      + `  annonce : ${!entree ? 'non éligible (niveau faible)'
+          : entree.selected ? 'SÉLECTIONNÉE' : 'non retenue'}`;
+    if (entree) {
+      jep += `\n  lead cible ${entree.targetLeadSeconds} s`
+        + ` · prévue ${fmtTime(entree.plannedAt)}`
+        + ` · priorité : ${entree.priorityReason}`
+        + (entree.rejet ? `\n  écartée : ${echapper(entree.rejet)}` : '');
+    }
+  }
+  $('techEpisodes').innerHTML = jep;
 
   const boites = [];
   r.zones.forEach((z, i) => {
@@ -2000,6 +2069,12 @@ function render() {
   const r = state.result, route = state.route;
   if (!r || !route) return;
 
+  // La couche produit est dérivée à chaque rendu, jamais stockée dans les
+  // zones : les données scientifiques restent exactement ce qu'analyze() a
+  // produit. Un retour recalcule les siennes, il n'hérite jamais de l'aller.
+  state.episodes = construireEpisodes(r.zones);
+  state.plan = construirePlanAnnonces(state.episodes);
+
   // ---- niveau 1 : le trajet ----
   const arrivee = r.departureMs + route.totalS * 1000;
   $('trajetTitre').textContent = `${nomCourt(state.from)} → ${nomArrivee(state.to)}`;
@@ -2009,46 +2084,47 @@ function render() {
     + `${(route.totalM / 1000).toFixed(1).replace('.', ',')} km`;
 
   // ---- niveau 1 : la réponse en une phrase ----
-  // Le tri « important / faible » est une hiérarchie de lecture. Aucune zone
-  // n'est retirée des données, aucune annonce n'est modifiée.
-  const importantes = r.zones.filter((z) => RANK[z.level] >= RANK.moderate);
-  const faibles = r.zones.filter((z) => RANK[z.level] < RANK.moderate);
+  // « Combien de moments dois-je connaître ? » — pas « combien de zones le
+  // moteur a-t-il trouvées ». Le tri est une hiérarchie de lecture : aucune
+  // zone n'est retirée des données, aucune annonce n'est modifiée.
+  const importants = state.episodes.filter((e) => RANK[e.maxLevel] >= RANK.moderate);
+  const faibles = state.episodes.filter((e) => RANK[e.maxLevel] < RANK.moderate);
   const bilan = $('bilan');
   bilan.className = 'bilan ' + r.highest;
 
-  if (importantes.length) {
-    const premiere = importantes[0];
-    const delai = Math.max(0, Math.round((premiere.startAt - r.departureMs) / 60000));
-    const totalMin = Math.round(importantes.reduce((a, z) => a + z.seconds, 0) / 60);
-    $('bilanGrand').textContent = importantes.length === 1
-      ? 'Une période importante sur ce trajet'
-      : `${importantes.length} périodes importantes sur ce trajet`;
+  if (importants.length) {
+    const premier = importants.reduce((m, e) => e.startAt < m.startAt ? e : m, importants[0]);
+    const delai = Math.max(0, Math.round((premier.startAt - r.departureMs) / 60000));
+    const totalMin = Math.round(importants.reduce((a, e) => a + e.exposedSeconds, 0) / 60);
+    $('bilanGrand').textContent = importants.length === 1
+      ? 'Un moment à connaître sur ce trajet'
+      : `${importants.length} moments à connaître sur ce trajet`;
     $('bilanSous').innerHTML = delai === 0
-      ? `La première commence <b>dès le départ</b>, à <b>${fmtTime(premiere.startAt)}</b>`
-      : `Première <b>${delai} min</b> après le départ, à <b>${fmtTime(premiere.startAt)}</b>`;
+      ? `Le premier commence <b>dès le départ</b>, à <b>${fmtTime(premier.startAt)}</b>`
+      : `Premier <b>${delai} min</b> après le départ, à <b>${fmtTime(premier.startAt)}</b>`;
     $('bilanTiers').textContent = totalMin >= 1
-      ? `~${totalMin} min concernées au total`
+      ? `~${totalMin} min de soleil concernées au total`
       : '';
   } else if (faibles.length) {
     $('bilanGrand').textContent = 'Quelques passages avec soleil bas';
     $('bilanSous').innerHTML = `${faibles.length} passage${faibles.length > 1 ? 's' : ''} `
-      + 'de niveau faible. Rien d’important à signaler.';
+      + 'de niveau faible. Aucun moment important détecté.';
     $('bilanTiers').textContent = '';
   } else {
-    $('bilanGrand').textContent = 'Rien d’important à signaler sur ce trajet';
+    $('bilanGrand').textContent = 'Aucun moment important détecté';
     $('bilanSous').textContent = 'Le soleil ne sera jamais bas dans l’axe de la route, '
       + 'à cette heure.';
     $('bilanTiers').textContent = '';
   }
 
-  dessinerLigne(r, route.totalM);
+  dessinerLigne(r, route.totalM, state.episodes);
 
-  // ---- niveau 1 : les cartes de zones, les importantes d'abord ----
-  $('zoneCartes').innerHTML = importantes.map((z) => carteZone(z, r.departureMs)).join('');
-  $('zoneFaibles').innerHTML = faibles.map((z) => carteZone(z, r.departureMs)).join('');
+  // ---- niveau 1 : une carte par moment, les importants d'abord ----
+  $('zoneCartes').innerHTML = importants.map((e) => carteEpisode(e, r, r.departureMs)).join('');
+  $('zoneFaibles').innerHTML = faibles.map((e) => carteEpisode(e, r, r.departureMs)).join('');
   const bouton = $('voirFaibles');
-  bouton.classList.toggle('hide', !faibles.length || !importantes.length);
-  if (faibles.length && !importantes.length) {
+  bouton.classList.toggle('hide', !faibles.length || !importants.length);
+  if (faibles.length && !importants.length) {
     $('zoneFaibles').classList.remove('hide');
   } else {
     $('zoneFaibles').classList.add('hide');

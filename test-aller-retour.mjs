@@ -53,6 +53,13 @@ const GEOM_RICHE = [
 ];
 const DEPART_RICHE = '2026-12-22T06:00';
 
+/* Trajet « moments » : trois passages dans l'axe séparés par six kilomètres
+   hors axe — six minutes de silence, au-dessus du gap de fusion des épisodes.
+   Il produit donc plusieurs MOMENTS distincts, de niveaux différents, ce que
+   le trajet « riche » ne fait plus depuis que ses zones fusionnent. */
+const G = { lat: -21.082965, lng: 55.517235, label: 'Point G — trois moments' };
+const GEOM_MOMENTS = [[-20.88,55.45],[-20.90106,55.503144],[-20.947738,55.474277],[-20.968797,55.527421],[-21.015475,55.498554],[-21.059626,55.531669],[-21.082965,55.517235]];
+
 const MAINTENANT = new Date(args.maintenant || '2026-12-21T17:55:00+04:00').getTime();
 const DEPART_ALLER = '2026-12-22T06:15';                // lendemain : départ futur
 
@@ -124,6 +131,7 @@ const serveur = http.createServer(async (req, res) => {
       if (proche(o, A) && proche(d, B)) return envoyer(reponseRoute(GEOM_ALLER));
       if (proche(o, B) && proche(d, A)) return envoyer(reponseRoute(GEOM_RETOUR));
       if (proche(o, A) && proche(d, D)) return envoyer(reponseRoute(GEOM_RICHE));
+      if (proche(o, A) && proche(d, G)) return envoyer(reponseRoute(GEOM_MOMENTS));
       return envoyer({ error: 'Couple origine/destination inconnu du banc de test.' }, 404);
     }
 
@@ -219,7 +227,8 @@ await page.route('**://fonts.gstatic.com/**', (r) => r.abort());
 await page.route('**/nominatim.openstreetmap.org/**', (r) => {
   const q = decodeURIComponent(new URL(r.request().url()).searchParams.get('q') || '');
   // « ouest » contient « est » : le discriminant doit être le nom du point.
-  const p = /point a/i.test(q) ? A : /point d/i.test(q) ? D : B;
+  const p = /point a/i.test(q) ? A : /point d/i.test(q) ? D
+    : /point g/i.test(q) ? G : B;
   r.fulfill({ status: 200, contentType: 'application/json',
     body: JSON.stringify([{ display_name: p.label, lat: String(p.lat), lon: String(p.lng) }]) });
 });
@@ -290,33 +299,31 @@ async function analyser() {
   }
 }
 
-/* Empreinte du résultat lisible SUR LES DEUX VERSIONS — avant et après l'UX
-   V1. Elle ne compare que ce que les deux savent montrer : le nombre de zones,
-   leur niveau, et pour chacune la distance, la longueur et l'heure affichées.
-   Les valeurs exactes se comparent ailleurs, sur les charges utiles réseau. */
+/* Empreinte SCIENTIFIQUE du résultat. Elle ne lit plus l'affichage — qui a
+   changé avec les épisodes de la V0.5 — mais le niveau 3, où chaque zone
+   expose ses valeurs exactes : niveau, côté, startD, endD, startAt, endAt,
+   durée, élévation, delta, score, azimut et position. C'est cela qui doit
+   rester identique d'une version à l'autre. */
 async function etatResultat() {
   return page.evaluate(() => {
-    const nombres = (t) => (t.match(/[\d]+[,.]?[\d]*\s*(?:km|m)\b/g) || []).join(' | ');
-    const cartes = [...document.querySelectorAll('.zc')];
-    let zones;
-    if (cartes.length) {                                   // UX V1
-      zones = cartes.map((c) => ({
-        niveau: ['low', 'moderate', 'high'].find((k) => c.classList.contains(k)),
-        heure: (c.querySelector('.heure').textContent.match(/\d{2}:\d{2}/) || [''])[0],
-        ou: nombres(c.querySelector('.ou').textContent),
-      }));
-    } else {                                               // version d'avant
-      zones = [...document.querySelectorAll('#zoneList li')].map((li) => ({
-        niveau: ['low', 'moderate', 'high'].find(
-          (k) => li.querySelector('.dot') && li.querySelector('.dot').classList.contains(k)),
-        heure: ((li.querySelector('.zk') || { textContent: '' }).textContent
-          .match(/\d{2}:\d{2}/) || [''])[0],
-        ou: nombres((li.querySelector('.zt span') || { textContent: '' }).textContent),
-      }));
+    const blocs = [...document.querySelectorAll('#techZones .techzone')];
+    if (blocs.length) {
+      return {
+        nZones: blocs.length,
+        zones: blocs.map((b) => b.textContent.replace(/\s+/g, ' ')
+          // Relief et météo portent un fetchedAt : on ne garde que la partie
+          // déterministe, celle que le moteur produit.
+          .split(' Relief ')[0].split(' Météo ')[0].trim()),
+      };
     }
-    zones = zones.filter((z) => z.niveau).sort((a, b) => a.ou.localeCompare(b.ou));
-    return { nZones: zones.length, zones };
+    return { nZones: document.querySelectorAll('#zoneList li').length, zones: [] };
   });
+}
+
+/** Nombre de cartes de PREMIER niveau — épisodes en V0.5, zones avant. */
+async function cartesNiveau1() {
+  return page.evaluate(() => document.querySelectorAll(
+    '#zoneCartes > .zc, #zoneFaibles > .zc').length);
 }
 
 await page.goto(base + '/index.html');
@@ -445,6 +452,62 @@ if (SCENARIO === 'planifie') {
   process.exit(0);
 }
 
+/* ---------- scénario « moments » : plusieurs épisodes distincts ---------- */
+if (SCENARIO === 'moments') {
+  await choisir('from', 'Point A'); await choisir('to', 'Point G');
+  await page.fill('#date', '2026-12-22'); await page.fill('#time', '06:00');
+  await page.click('#analyze'); await attendreFinAnalyse();
+  if (await page.isVisible('#err')) throw new Error(await page.textContent('#err'));
+  const res = await etatResultat();
+  const c = await page.evaluate(() => ({
+    importants: [...document.querySelectorAll('#zoneCartes > .zc')]
+      .map((x) => ({ niveau: ['low','moderate','high'].find((k) => x.classList.contains(k)),
+                     titre: x.querySelector('h3').textContent.trim(),
+                     sources: x.querySelectorAll('.zc').length })),
+    faibles: [...document.querySelectorAll('#zoneFaibles > .zc')]
+      .map((x) => ['low','moderate','high'].find((k) => x.classList.contains(k))),
+    faiblesCachees: document.getElementById('zoneFaibles').classList.contains('hide'),
+    boutonVisible: !document.getElementById('voirFaibles').classList.contains('hide'),
+    bilan: document.getElementById('bilanGrand').textContent,
+    legende: document.getElementById('ligneLegende').textContent.replace(/\s+/g, ' ').trim(),
+    marques: document.querySelectorAll('#ligneRail .marque').length,
+  }));
+  fs.writeFileSync(args.sortie || '/dev/stdout', JSON.stringify({
+    resultat: res, route: routes().at(-1)?.corps,
+    elevationPoints: elevations().at(-1)?.corps?.points ?? [],
+    meteoObservations: meteos().at(-1)?.corps?.observations ?? [],
+    appels: { route: routes().length, elevation: elevations().length, meteo: meteos().length },
+  }, null, 2));
+  console.log('MOMENTS :', JSON.stringify({ zones: res.nZones, ...c }, null, 1).slice(0, 900));
+  if (args.ux) {
+    console.log('\nUX sur trajet à plusieurs moments');
+    const total = c.importants.length + c.faibles.length;
+    chk('§7 — plusieurs moments distincts sont construits', total >= 2, `${total} moment(s)`);
+    // Ici les zones sont séparées par six minutes de silence : chacune est son
+    // propre moment. Le scénario « riche » teste le cas inverse, la fusion.
+    chk('§4 — un long silence sépare bien les moments', total === res.nZones,
+      `${res.nZones} zones séparées de 6 min → ${total} moments`);
+    chk('§7 — le bilan compte des MOMENTS', /moment/i.test(c.bilan), c.bilan);
+    chk('§8 — les moments faibles sont repliés derrière un bouton',
+      c.faibles.length === 0 || (c.faiblesCachees && c.boutonVisible),
+      `${c.faibles.length} faible(s)`);
+    // Un moment d'une seule zone EST cette zone : la carte porte déjà son
+    // heure, sa distance et son relief, et un repli « voir le passage » n'y
+    // ajouterait rien. Ce qui doit tenir, c'est que le niveau 3 les garde toutes.
+    chk('§8 — le niveau technique conserve chaque zone scientifique',
+      res.nZones === 3 && res.zones.length === 3, `${res.nZones} zone(s) au niveau 3`);
+    chk('§7 — la ligne de trajet garde une marque par zone',
+      c.marques === res.nZones, `${c.marques} marque(s) pour ${res.nZones} zone(s)`);
+    chk('§5 — les titres décrivent une géométrie',
+      c.importants.every((x) => /Soleil/.test(x.titre))
+      && !c.importants.some((x) => /éblou|danger|gêné/i.test(x.titre)),
+      c.importants.map((x) => x.titre).join(' | '));
+    console.log(`\n${ok} contrôle(s) PASS, ${ko} ÉCHEC.`);
+  }
+  await navigateur.close(); serveur.close();
+  process.exit(ko ? 1 : 0);
+}
+
 /* ---------- scénario « riche » : trois niveaux dans un seul trajet ---------- */
 if (SCENARIO === 'riche') {
   await choisir('from', 'Point A est');
@@ -470,27 +533,21 @@ if (SCENARIO === 'riche') {
       return n.textContent.replace(/\s+/g, ' ').trim();
     });
     const compte = await page.evaluate(() => ({
-      importantes: document.getElementById('zoneCartes').querySelectorAll('.zc').length,
-      faibles: document.getElementById('zoneFaibles').querySelectorAll('.zc').length,
-      boutonVisible: !document.getElementById('voirFaibles').classList.contains('hide'),
-      faiblesCachees: document.getElementById('zoneFaibles').classList.contains('hide'),
+      importants: document.querySelectorAll('#zoneCartes > .zc').length,
+      faibles: document.querySelectorAll('#zoneFaibles > .zc').length,
+      sources: document.querySelectorAll('#zoneCartes .zc .zc, #zoneFaibles .zc .zc').length,
       marques: document.querySelectorAll('#ligneRail .marque').length,
     }));
     console.log('\nUX sur trajet à trois niveaux');
-    chk('§8 — les zones importantes sont en tête', compte.importantes >= 2,
-      `${compte.importantes} importante(s)`);
-    chk('§8 — les zones faibles sont repliées derrière un bouton',
-      compte.faibles >= 1 && compte.faiblesCachees && compte.boutonVisible,
-      `${compte.faibles} faible(s)`);
-    chk('§7 — une marque par zone sur la ligne de trajet',
-      compte.marques === compte.importantes + compte.faibles, `${compte.marques} marque(s)`);
-    chk('§8 — aucune zone n’est supprimée des données',
-      compte.importantes + compte.faibles === res.nZones);
-    chk('§21 — pas de jargon malgré trois niveaux',
+    chk('§3 — les trois zones scientifiques ne font qu’UN moment',
+      compte.importants + compte.faibles === 1,
+      `${res.nZones} zones → ${compte.importants + compte.faibles} carte(s) de moment`);
+    chk('§8 — les zones sources restent accessibles sous le moment',
+      compte.sources === res.nZones, `${compte.sources} passage(s) détaillé(s)`);
+    chk('§7 — la ligne de trajet garde une marque par zone',
+      compte.marques === res.nZones, `${compte.marques} marque(s)`);
+    chk('§21 — pas de jargon au niveau 1',
       !['DNI', 'W/m²', 'UTC', 'seuil', 'score'].some((j) => n1r.includes(j)));
-    await page.click('#voirFaibles');
-    chk('§8 — le bouton révèle bien les passages faibles',
-      await page.evaluate(() => !document.getElementById('zoneFaibles').classList.contains('hide')));
     console.log(`\n${ok} contrôle(s) PASS, ${ko} ÉCHEC.`);
   }
   if (args.capture) {
@@ -658,13 +715,13 @@ async function texteNiveau1(sel) {
 const n1 = await texteNiveau1('#result');
 
 chk('§25.1 — « y a-t-il quelque chose d’important ? » répondu en clair',
-  /période|passage|Rien d.{1,3}important/i.test(n1),
+  /moment|passage|Aucun moment important/i.test(n1),
   (await page.textContent('#bilanGrand')).slice(0, 62));
 chk('§25.2 — « dans combien de temps ? »', /min après le départ/.test(n1));
 chk('§25.3 — « pendant combien de temps ? »',
-  /pendant ~\d+ min|~\d+ min concernées/.test(n1));
+  /environ \d+ min de soleil|~\d+ min de soleil concernées/.test(n1));
 chk('§25.4 — « de face ou sur le côté ? »',
-  /dans l.{1,3}axe|champ de vision|sur la (gauche|droite)/i.test(n1));
+  /en face|dans l.{1,3}axe|champ de vision|sur la (gauche|droite)/i.test(n1));
 chk('§25.5 — « le relief le masque-t-il ? »',
   /Relief naturel : (horizon dégagé|soleil masqué|non vérifié)/.test(n1));
 chk('§25.6 — « où dans le trajet ? »',
