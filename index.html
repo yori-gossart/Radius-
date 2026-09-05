@@ -1103,7 +1103,7 @@ const state = { from: null, to: null, route: null, result: null, watch: null,
                 audio: null, wake: null, sim: null, swReg: null,
                 lastFixMs: 0, lastIdx: null, health: null, mode: null,
                 analyseEnCours: false, suivi: null, trajet: null, demarrage: null,
-                positionEchouee: false, suiviDepuisMs: 0,
+                positionEchouee: false, suiviDepuisMs: 0, simHorlogeMs: NaN,
                 relief: { requetes: 0, points: 0 },
                 meteo: { requetes: 0, zones: 0 } };
 
@@ -1239,7 +1239,7 @@ function arreterSuivi() {
   if (state.health) { clearInterval(state.health); state.health = null; }
   state.watch = null; state.lastIdx = null; state.lastFixMs = 0;
   state.mode = null; state.demarrage = null;
-  state.positionEchouee = false; state.suiviDepuisMs = 0;
+  state.positionEchouee = false; state.suiviDepuisMs = 0; state.simHorlogeMs = NaN;
   $('suiv').classList.remove('stale');
   $('aliveWarn').classList.add('hide');
   $('modeBanner').classList.add('hide');
@@ -1985,8 +1985,17 @@ function phrase(zone, secondsAhead) {
   return `${where} dans ${min} minute${min > 1 ? 's' : ''}, ${during}.`;
 }
 
+/* Horloge des annonces. En suivi réel c'est l'horloge du téléphone ; en mode
+   test c'est le temps du TRAJET, qui défile en accéléré. Sans cela, le cooldown
+   était simplement neutralisé — trois annonces en douze secondes — et le seul
+   outil pour vérifier la voix n'éprouvait pas la contrainte la plus importante
+   du produit : jamais deux annonces à moins de trois minutes. */
+function horlogeAnnonces() {
+  return state.sim && Number.isFinite(state.simHorlogeMs) ? state.simHorlogeMs : Date.now();
+}
+
 function fireAlert(zone, secondsAhead) {
-  const now = Date.now();
+  const now = horlogeAnnonces();
   if (zone.announced) return;
   if (RANK[zone.level] < RANK.moderate) return;      // le faible reste visuel
   if (alertCount >= MAX_ALERTS) return;
@@ -1997,7 +2006,7 @@ function fireAlert(zone, secondsAhead) {
   const text = phrase(zone, secondsAhead);
   speak(text);
   notify('Éblouissement à venir', text);
-  log(`Annonce ${alertCount}/${MAX_ALERTS} — « ${text} »`);
+  log(`Annonce ${alertCount}/${MAX_ALERTS} — « ${text} » · horloge ${fmtTime(now)}`);
 }
 
 /** Indice de l'échantillon correspondant à une distance parcourue.
@@ -2427,6 +2436,7 @@ $('sim').onclick = () => {
   alertCount = 0; lastAlertMs = 0;
   for (const z of state.result.zones) z.announced = false;
   state.lastIdx = null; state.lastFixMs = Date.now();
+  state.simHorlogeMs = state.result.departureMs;
   state.health = setInterval(refreshHealth, 1000);
   refreshHealth();
   $('result').classList.add('hide');
@@ -2442,8 +2452,10 @@ $('sim').onclick = () => {
   state.sim = setInterval(() => {
     if (idx >= totalSteps) { clearInterval(state.sim); state.sim = null; log('Simulation terminée.'); return; }
     const [lat, lng] = coords[idx];
-    // On force le cooldown à zéro en simulation, sinon une seule zone parle.
-    lastAlertMs = 0;
+    // Le temps du trajet avance avec la position : c'est lui qui arbitre le
+    // cooldown, pas l'horloge réelle qui défile trente fois trop vite.
+    state.simHorlogeMs = state.result.departureMs
+      + state.route.cumTime[Math.min(idx, state.route.cumTime.length - 1)] * 1000;
     state.lastFixMs = Date.now();
     onPosition(lat, lng, 16);
     idx += Math.max(1, Math.round(totalSteps / 120));

@@ -21,6 +21,11 @@ const B = { lat: -20.94117, lng: 55.57849, label: 'Point B' };
 const E = { lat: -21.057595, lng: 55.604842, label: 'Point E' };
 const GEOM_AB = [[A.lat, A.lng], [B.lat, B.lng]];
 const GEOM_BA = [[B.lat, B.lng], [-20.923476, 55.575151], [-20.969029, 55.470588], [A.lat, A.lng]];
+/* Zones rapprochées : branches de 1,5 km dans l'axe du soleil levant séparées
+   par 1 km hors axe. Une zone toutes les ~2,5 km, soit ~2,6 min à 16 m/s —
+   sous les trois minutes du cooldown, donc de quoi l'éprouver vraiment. */
+const F = { lat: -20.984357, lng: 55.517799, label: 'Point F — zones serrées' };
+const GEOM_SERRE = [[-20.88,55.45],[-20.885265,55.463286],[-20.893045,55.458475],[-20.89831,55.471761],[-20.906089,55.46695],[-20.911354,55.480236],[-20.919134,55.475425],[-20.924399,55.48871],[-20.932178,55.483899],[-20.937443,55.497185],[-20.945223,55.492374],[-20.950488,55.50566],[-20.958267,55.500849],[-20.963532,55.514135],[-20.971312,55.509324],[-20.976577,55.52261],[-20.984357,55.517799]];
 const GEOM_8 = [[-20.88,55.45],[-20.89053,55.476572],[-20.902199,55.469355],[-20.912729,55.495927],[-20.924399,55.48871],[-20.934929,55.515282],[-20.946598,55.508066],[-20.957128,55.534638],[-20.968797,55.527421],[-20.979327,55.553993],[-20.990997,55.546776],[-21.001527,55.573348],[-21.013196,55.566131],[-21.023726,55.592703],[-21.035395,55.585487],[-21.045925,55.612058],[-21.057595,55.604842]];
 
 const journal = [];
@@ -64,6 +69,7 @@ const serveur = http.createServer(async (req, res) => {
       if (pr(o, A) && pr(d, B)) return envoyer(reponseRoute(GEOM_AB));
       if (pr(o, B) && pr(d, A)) return envoyer(reponseRoute(GEOM_BA));
       if (pr(o, A) && pr(d, E)) return envoyer(reponseRoute(GEOM_8));
+      if (pr(o, A) && pr(d, F)) return envoyer(reponseRoute(GEOM_SERRE));
       if (pr(o, A) && pr(d, A)) return envoyer({ error: 'Aucun itinéraire routier trouvé par Google.', code: 'NO_ROUTE' }, 404);
       return envoyer({ error: 'Couple inconnu du banc.' }, 404);
     }
@@ -127,7 +133,8 @@ await page.route('**://fonts.googleapis.com/**', (r) => r.abort());
 await page.route('**://fonts.gstatic.com/**', (r) => r.abort());
 await page.route('**/nominatim.openstreetmap.org/**', (r) => {
   const q = decodeURIComponent(new URL(r.request().url()).searchParams.get('q') || '');
-  const p = /point a/i.test(q) ? A : /point e/i.test(q) ? E : B;
+  const p = /point a/i.test(q) ? A : /point e/i.test(q) ? E
+    : /point f/i.test(q) ? F : B;
   navigations.push('NOMINATIM ' + q);
   r.fulfill({ status: 200, contentType: 'application/json',
     body: JSON.stringify([{ display_name: p.label, lat: String(p.lat), lon: String(p.lng) }]) });
@@ -386,6 +393,45 @@ if (veut('R-006')) {
   const minuit = (await page.textContent('#trajetMeta')).trim();
   chk('R-006 le franchissement de minuit est signalé',
     /\+1|lendemain|22/.test(minuit), minuit);
+}
+
+/* R-007 — le mode test doit exercer la MÊME règle de parole que la route.
+   Avant correction : lastAlertMs était remis à zéro à chaque tick, donc trois
+   annonces en douze secondes réelles. Le seul outil pour vérifier la voix ne
+   vérifiait pas la contrainte la plus importante du produit. */
+if (veut('R-007')) {
+  console.log('\n== R-007 — cooldown vocal exercé en mode test ==');
+  await page.goto(base + '/index.html');
+  await choisir('from', 'Point A'); await choisir('to', 'Point F');
+  await page.fill('#date', '2026-12-22'); await page.fill('#time', '06:00');
+  await page.click('#analyze'); await attendreFin();
+  const nz = await page.evaluate(() => document.querySelectorAll('.zc').length);
+  await page.click('#sim');
+  await page.waitForSelector('#tracking:not(.hide)');
+  await page.waitForFunction(() => /Simulation terminée/.test(
+    document.getElementById('log').textContent), null, { timeout: 60000 });
+  const j = await journalTexte();
+  // Le journal porte l'horloge des annonces — réelle en suivi, simulée en test.
+  const total = (j.match(/Annonce \d\/4/g) || []).length;
+  // Le journal est affiché du plus récent au plus ancien : on remet en ordre
+  // chronologique avant de mesurer les écarts, sinon ils sortent négatifs et
+  // une valeur absolue masquerait un vrai désordre.
+  const heures = [...j.matchAll(/Annonce (\d)\/4 —.*?horloge (\d\d):(\d\d)/g)]
+    .map((m) => ({ n: Number(m[1]), t: Number(m[2]) * 60 + Number(m[3]) }))
+    .sort((a, b) => a.n - b.n).map((x) => x.t);
+  const ecarts = heures.slice(1).map((h, i) => h - heures[i]);
+  chk('R-007 le journal horodate les annonces sur l’horloge du trajet',
+    heures.length === total && total > 0, `${heures.length}/${total} horodatée(s)`);
+  chk('R-007 des annonces sont bien parties', total >= 2,
+    `${total} annonce(s) sur ${nz} zone(s)`);
+  chk('R-007 les annonces se suivent dans l’ordre du trajet',
+    ecarts.every((e) => e > 0), `écarts : ${ecarts.join(', ')} min`);
+  chk('R-007 jamais deux annonces à moins de trois minutes',
+    ecarts.every((e) => e >= 3), `écarts : ${ecarts.join(', ')} min`);
+  chk('R-007 le plafond de quatre annonces tient', heures.length <= 4);
+  chk('R-007 aucune zone faible n’est annoncée',
+    !/Annonce.*faible/i.test(j));
+  await page.click('#stopTrack');
 }
 
 console.log(`\n${ok} contrôle(s) PASS, ${ko} ÉCHEC.`);
