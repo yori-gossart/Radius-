@@ -226,6 +226,67 @@ un abus de quota est le plafond de budget côté Google Cloud**, qui est une
 action de compte, pas de code. `RADIUS_ORIGINES` permet d'ajouter des hôtes sans
 redéployer si le domaine change.
 
+## V0.5 — Épisodes et alertes utiles
+
+Décision du 5 septembre 2026. Elle ajoute une couche PRODUIT au-dessus des
+données existantes, sans toucher à une seule ligne du moteur.
+
+**Une zone scientifique n'est pas un événement utilisateur.** Quatre zones
+« high / face » séparées de deux minutes décrivent un seul moment vécu. Le
+conducteur n'a pas à recevoir quatre cartes ni quatre interruptions pour cela.
+
+La chaîne est désormais : trajet → échantillons → **zones scientifiques** →
+**épisodes** → **plan d'annonces** → écran.
+
+**Le regroupement est une règle d'interface, pas une règle scientifique.** Deux
+coupures, et deux seulement : un silence de plus de `EPISODE_GAP_S` = 300 s
+entre deux zones, ou un changement de côté franc — gauche vers droite ou
+l'inverse. Passer de face à un côté ne coupe pas : c'est le même soleil qui
+glisse. Cinq minutes ont été choisies après avoir rejoué des cas synthétiques :
+à trois, une route sinueuse produit encore trois cartes pour un seul coucher ;
+à dix, deux phénomènes distincts fusionnent et la durée cesse d'être honnête.
+
+**Les constantes V0.5 ne sont pas des seuils scientifiques.** `EPISODE_GAP_S`,
+`LEAD_HIGH_FACE_LONG_S`, `LEAD_HIGH_S`, `LEAD_MODERATE_S`, `LEAD_LONG_S`,
+`LEAD_PLANCHER_UX_S` et `PHRASE_MAX_CARACTERES` sont **non calibrées**. Elles
+attendent des relevés de terrain comme `T`, mais d'une autre nature : « trop
+d'annonces », « annonce trop tôt », « je n'ai pas compris » — jamais « rien vu ».
+Elles ne lisent pas `T` et ne s'y mélangent jamais.
+
+**`MAX_ALERTS = 4` est un plafond, pas un objectif.** Zéro annonce est un
+résultat valide. Jamais une annonce pour remplir un quota.
+
+**Un épisode ne parle qu'une fois**, quel que soit le nombre de zones qu'il
+regroupe. Une seconde annonce dans le même épisode n'est pas implémentée :
+définir « transition significative » demanderait des seuils arbitraires non
+testés, et dans le doute Radius se tait.
+
+**L'anticipation s'adapte à l'épisode** — cinq minutes pour un soleil très bas
+dans l'axe qui dure, trois pour un autre niveau élevé, deux pour un modéré — et
+ne dépasse jamais le double de l'exposition : on ne prévient pas cinq minutes à
+l'avance pour quarante secondes de soleil. `MIN_LEAD_SECONDS` reste le plancher,
+`COOLDOWN_MS` le garde-fou absolu.
+
+**Un épisode écarté ne disparaît jamais en silence.** Le plan porte sa raison —
+plafond, cooldown, trop tard — et le journal technique la montre. C'est ce qui
+permet enfin d'auditer pourquoi Radius parle ou se tait.
+
+**Traçabilité totale.** Chaque épisode garde `sourceZoneIndexes` vers ses zones
+d'origine, aucune n'est perdue ni dupliquée, et le niveau 3 continue de les
+exposer toutes avec leurs valeurs exactes.
+
+**La météo n'entre dans aucune décision** — ni épisode, ni priorité, ni
+anticipation, ni annonce. **Le relief non plus** : il s'affiche, il ne décide
+pas. « Terrain bloqué donc silence » reste hors périmètre tant que rien ne l'a
+validé sur la route.
+
+**Réel et simulation partagent la même couche** : mêmes épisodes, même plan,
+mêmes priorités, même cooldown. Seule l'horloge diffère.
+
+Tests ajoutés : `test-episodes.mjs`, 53 contrôles sur du code extrait de
+`index.html` à l'exécution, plus deux scénarios navigateur — « riche » pour la
+fusion, « moments » pour la séparation.
+
 ## La règle de parole
 
 Le produit parle **par-dessus un GPS qui parle déjà**, et aucun système

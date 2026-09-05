@@ -24,8 +24,8 @@ const GEOM_BA = [[B.lat, B.lng], [-20.923476, 55.575151], [-20.969029, 55.470588
 /* Zones rapprochées : branches de 1,5 km dans l'axe du soleil levant séparées
    par 1 km hors axe. Une zone toutes les ~2,5 km, soit ~2,6 min à 16 m/s —
    sous les trois minutes du cooldown, donc de quoi l'éprouver vraiment. */
-const F = { lat: -20.984357, lng: 55.517799, label: 'Point F — zones serrées' };
-const GEOM_SERRE = [[-20.88,55.45],[-20.885265,55.463286],[-20.893045,55.458475],[-20.89831,55.471761],[-20.906089,55.46695],[-20.911354,55.480236],[-20.919134,55.475425],[-20.924399,55.48871],[-20.932178,55.483899],[-20.937443,55.497185],[-20.945223,55.492374],[-20.950488,55.50566],[-20.958267,55.500849],[-20.963532,55.514135],[-20.971312,55.509324],[-20.976577,55.52261],[-20.984357,55.517799]];
+const F = { lat: -21.015475, lng: 55.498554, label: 'Point F — zones serrées' };
+const GEOM_SERRE = [[-20.88,55.45],[-20.911118,55.430756],[-20.916383,55.444042],[-20.924163,55.43923],[-20.929428,55.452516],[-20.937208,55.447705],[-20.942473,55.460991],[-20.950252,55.45618],[-20.955517,55.469466],[-20.963297,55.464655],[-20.968562,55.477941],[-20.976341,55.47313],[-20.981606,55.486416],[-20.989386,55.481605],[-20.994651,55.494891],[-21.00243,55.490079],[-21.007695,55.503365],[-21.015475,55.498554]];
 const GEOM_8 = [[-20.88,55.45],[-20.89053,55.476572],[-20.902199,55.469355],[-20.912729,55.495927],[-20.924399,55.48871],[-20.934929,55.515282],[-20.946598,55.508066],[-20.957128,55.534638],[-20.968797,55.527421],[-20.979327,55.553993],[-20.990997,55.546776],[-21.001527,55.573348],[-21.013196,55.566131],[-21.023726,55.592703],[-21.035395,55.585487],[-21.045925,55.612058],[-21.057595,55.604842]];
 
 /* Avec --vraisApi, /api/* n'est plus simulé : la requête du navigateur est
@@ -325,6 +325,7 @@ if (veut('R-003')) {
     document.getElementById('sim').click();
   });
   await page.waitForTimeout(2500);
+  if (erreursJS.length) console.log('  >> erreurs JS : ' + erreursJS.join(' | ').slice(0, 400));
   const j = await journalTexte();
   const sim = /Simulation/.test(j), reel = /Suivi démarré/.test(j);
   chk('R-003 un seul mode a démarré', !(sim && reel),
@@ -472,17 +473,21 @@ if (veut('R-006')) {
     /\+1|lendemain|22/.test(minuit), minuit);
 }
 
-/* R-007 — le mode test doit exercer la MÊME règle de parole que la route.
-   Avant correction : lastAlertMs était remis à zéro à chaque tick, donc trois
-   annonces en douze secondes réelles. Le seul outil pour vérifier la voix ne
-   vérifiait pas la contrainte la plus importante du produit. */
+/* R-007 — le mode test doit exercer la MÊME règle de parole que la route :
+   cooldown arbitré par l'horloge du trajet, jamais neutralisé. Depuis la V0.5,
+   ces neuf zones serrées ne font plus qu'UN moment, et un moment ne parle
+   qu'une fois — c'est aussi ce que ce cas vérifie. */
 if (veut('R-007')) {
   console.log('\n== R-007 — cooldown vocal exercé en mode test ==');
   await page.goto(base + '/index.html');
   await choisir('from', 'Point A'); await choisir('to', 'Point F');
   await page.fill('#date', '2026-12-22'); await page.fill('#time', '06:00');
   await page.click('#analyze'); await attendreFin();
-  const nz = await page.evaluate(() => document.querySelectorAll('.zc').length);
+  // Cartes de PREMIER niveau : les moments. Les zones sources vivent dans
+  // leurs replis et ne doivent pas être comptées ici.
+  const nz = await page.evaluate(() => document.querySelectorAll('#zoneCartes > .zc').length);
+  const nzones = await page.evaluate(() =>
+    document.querySelectorAll('#techZones .techzone').length);
   await page.click('#sim');
   await page.waitForSelector('#tracking:not(.hide)');
   await page.waitForFunction(() => /Simulation terminée/.test(
@@ -499,12 +504,19 @@ if (veut('R-007')) {
   const ecarts = heures.slice(1).map((h, i) => h - heures[i]);
   chk('R-007 le journal horodate les annonces sur l’horloge du trajet',
     heures.length === total && total > 0, `${heures.length}/${total} horodatée(s)`);
-  chk('R-007 des annonces sont bien parties', total >= 2,
-    `${total} annonce(s) sur ${nz} zone(s)`);
+  chk('R-007 des annonces sont bien parties', total >= 1,
+    `${total} annonce(s) · ${nzones} zones regroupées en ${nz} moment(s)`);
+  chk('R-007/V0.5 un moment fait de plusieurs zones ne parle qu’une fois',
+    total <= nz, `${total} annonce(s) pour ${nz} moment(s)`);
+  // Avec un seul moment il n'y a pas d'écart à mesurer : le dire, plutôt que
+  // de laisser deux contrôles passer sur un tableau vide.
   chk('R-007 les annonces se suivent dans l’ordre du trajet',
-    ecarts.every((e) => e > 0), `écarts : ${ecarts.join(', ')} min`);
+    ecarts.every((e) => e > 0),
+    ecarts.length ? `écarts : ${ecarts.join(', ')} min` : 'une seule annonce, rien à ordonner');
   chk('R-007 jamais deux annonces à moins de trois minutes',
-    ecarts.every((e) => e >= 3), `écarts : ${ecarts.join(', ')} min`);
+    ecarts.every((e) => e >= 3),
+    ecarts.length ? `écarts : ${ecarts.join(', ')} min`
+      : 'une seule annonce — l’espacement est couvert par test-episodes.mjs');
   chk('R-007 le plafond de quatre annonces tient', heures.length <= 4);
   chk('R-007 aucune zone faible n’est annoncée',
     !/Annonce.*faible/i.test(j));

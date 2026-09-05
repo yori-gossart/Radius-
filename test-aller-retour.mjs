@@ -479,6 +479,18 @@ if (SCENARIO === 'moments') {
     appels: { route: routes().length, elevation: elevations().length, meteo: meteos().length },
   }, null, 2));
   console.log('MOMENTS :', JSON.stringify({ zones: res.nZones, ...c }, null, 1).slice(0, 900));
+  if (args.capture) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: `${args.capture}/resultat.png`, fullPage: true });
+    await page.click('#sim');
+    await page.waitForSelector('#tracking:not(.hide)');
+    await page.waitForTimeout(3500);
+    await page.screenshot({ path: `${args.capture}/suivi.png`, fullPage: true });
+    await page.click('#stopTrack');
+    await page.evaluate(() => { document.getElementById('tech').open = true; });
+    await page.screenshot({ path: `${args.capture}/technique.png`, fullPage: true });
+    console.log('captures écrites');
+  }
   if (args.ux) {
     console.log('\nUX sur trajet à plusieurs moments');
     const total = c.importants.length + c.faibles.length;

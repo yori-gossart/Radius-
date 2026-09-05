@@ -191,6 +191,8 @@ details>summary:focus-visible{outline:2px solid var(--sky);outline-offset:-2px}
   overflow:hidden}
 .barre i{display:block;height:100%;background:var(--sky);transition:width .4s linear}
 .suiv .age{font-family:var(--mono);font-size:11px;color:var(--mute);margin:12px 0 0}
+.suiv .ensuite{font-size:14px;color:var(--mute);margin:11px 0 0;padding-top:11px;
+  border-top:1px solid var(--edge)}
 .suiv.stale{border-left-color:var(--burn)}
 .suiv.stale .age{color:var(--burn)}
 @media (prefers-reduced-motion:reduce){.barre i{transition:none}*{transition:none!important}}
@@ -330,6 +332,7 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
     <div class="chiffres" id="suivChiffres"></div>
     <div class="barre" id="suivBarreBoite"><i id="suivBarre" style="width:0%"></i></div>
     <p class="rel" id="suivRelief" style="margin-top:13px"></p>
+    <p class="ensuite hide" id="suivEnsuite"></p>
     <p class="age" id="lAge">En attente du premier point GPS…</p>
   </div>
 
@@ -342,14 +345,16 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
   <div class="field">
     <button class="stop" id="stopTrack">Arrêter le suivi</button>
   </div>
-  <div class="field row">
+  <div class="field">
     <button class="ghost mini" id="voixSuivi" aria-pressed="true">🔊 Voix activée</button>
+  </div>
+  <div class="field">
     <button class="ghost mini" id="retourTrack">↔ Préparer le retour</button>
   </div>
   <div id="ancreRetourTrack"></div>
 
   <details id="suivListe">
-    <summary>Toutes les zones du trajet</summary>
+    <summary>Tous les moments du trajet</summary>
     <div class="dcorps"><ul class="zones" id="liveZones"></ul></div>
   </details>
 
@@ -1750,6 +1755,36 @@ function construirePlanAnnonces(episodes) {
   return entrees;
 }
 
+/** Reconstruit épisodes et plan depuis les zones courantes. Appelée au rendu,
+    au lancement d'une simulation et après un recalage d'horloge en roulant :
+    réel et test partagent ainsi exactement la même couche produit.
+    `anciennesEntrees` reporte ce qui a déjà été dit, pour qu'un recalage ne
+    fasse jamais reparler un moment déjà annoncé. */
+function rebatirCoucheProduit(anciennesEntrees) {
+  const zones = state.result ? state.result.zones : [];
+  state.episodes = construireEpisodes(zones);
+  state.plan = construirePlanAnnonces(state.episodes);
+  if (!anciennesEntrees || !anciennesEntrees.length) return;
+  for (const e of state.plan) {
+    const ep = state.episodes.find((x) => x.id === e.episodeId);
+    if (!ep) continue;
+    // Recouvrement temporel : après un recalage les identifiants changent, mais
+    // un épisode qui couvre le même instant reste le même moment vécu.
+    const dejaDit = anciennesEntrees.find((a) => a.spoken
+      && a.couvreDe < ep.endAt && ep.startAt < a.couvreA);
+    if (dejaDit) e.spoken = true;
+  }
+}
+
+/** Fige ce que chaque entrée de plan couvrait, pour le report ci-dessus. */
+function marquerCouverture() {
+  for (const e of state.plan) {
+    const ep = state.episodes.find((x) => x.id === e.episodeId);
+    if (ep) { e.couvreDe = ep.startAt; e.couvreA = ep.endAt; }
+  }
+  return state.plan.map((e) => ({ ...e }));
+}
+
 /** Phrase d'une zone représentative d'épisode, au niveau 1. Descriptive :
     une géométrie, jamais une gêne vécue. */
 function titreEpisode(ep) {
@@ -2072,8 +2107,7 @@ function render() {
   // La couche produit est dérivée à chaque rendu, jamais stockée dans les
   // zones : les données scientifiques restent exactement ce qu'analyze() a
   // produit. Un retour recalcule les siennes, il n'hérite jamais de l'aller.
-  state.episodes = construireEpisodes(r.zones);
-  state.plan = construirePlanAnnonces(state.episodes);
+  rebatirCoucheProduit();
 
   // ---- niveau 1 : le trajet ----
   const arrivee = r.departureMs + route.totalS * 1000;
@@ -2315,40 +2349,68 @@ async function notify(title, body) {
   } catch {}
 }
 
-/** Phrase courte : au-delà de ~3,5 s, elle empiète sur le GPS. */
-function phrase(zone, secondsAhead) {
-  const min = Math.max(1, Math.round(secondsAhead / 60));
-  const where = zone.side === 'face' ? 'Soleil de face'
-              : zone.side === 'gauche' ? 'Soleil à gauche' : 'Soleil à droite';
-  const km = Math.round(zone.length / 1000);
-  const during = zone.length >= 1000
-    ? `${km} kilomètre${km > 1 ? 's' : ''}`
-    : `${Math.round(zone.length / 100) * 100} mètres`;
-  return `${where} dans ${min} minute${min > 1 ? 's' : ''}, ${during}.`;
-}
-
 /* Horloge des annonces. En suivi réel c'est l'horloge du téléphone ; en mode
    test c'est le temps du TRAJET, qui défile en accéléré. Sans cela, le cooldown
-   était simplement neutralisé — trois annonces en douze secondes — et le seul
-   outil pour vérifier la voix n'éprouvait pas la contrainte la plus importante
-   du produit : jamais deux annonces à moins de trois minutes. */
+   serait simplement neutralisé — trois annonces en douze secondes — et le seul
+   outil pour vérifier la voix n'éprouverait pas la contrainte la plus
+   importante du produit : jamais deux annonces à moins de trois minutes. */
 function horlogeAnnonces() {
   return state.sim && Number.isFinite(state.simHorlogeMs) ? state.simHorlogeMs : Date.now();
 }
 
-function fireAlert(zone, secondsAhead) {
-  const now = horlogeAnnonces();
-  if (zone.announced) return;
-  if (RANK[zone.level] < RANK.moderate) return;      // le faible reste visuel
-  if (alertCount >= MAX_ALERTS) return;
-  if (now - lastAlertMs < COOLDOWN_MS) return;
-  if (secondsAhead < MIN_LEAD_SECONDS) return;
+/** Phrase courte : au-delà de ~3,5 s, elle empiète sur le GPS qui parle déjà.
+    Priorité à la direction, puis au délai, puis à la durée — et la durée saute
+    si elle fait déborder la phrase. */
+const PHRASE_MAX_CARACTERES = 58;
 
-  zone.announced = true; alertCount++; lastAlertMs = now;
-  const text = phrase(zone, secondsAhead);
+function phraseEpisode(ep, secondsAhead) {
+  const min = Math.max(1, Math.round(secondsAhead / 60));
+  const ou = ep.dominantSide === 'face' ? 'Soleil de face'
+           : ep.dominantSide === 'gauche' ? 'Soleil à gauche' : 'Soleil à droite';
+  const quand = `dans ${min} minute${min > 1 ? 's' : ''}`;
+  const expo = Math.round(ep.exposedSeconds / 60);
+  const courte = `${ou} ${quand}.`;
+  if (expo < 2) return courte;
+  const longue = `${ou} ${quand}, pendant ${expo} minutes.`;
+  return longue.length <= PHRASE_MAX_CARACTERES ? longue : courte;
+}
+
+/* Une interruption doit apporter une information nouvelle : un épisode ne parle
+   qu'une fois, quel que soit le nombre de zones scientifiques qu'il regroupe.
+   Les plafonds restent des plafonds — quatre annonces, trois minutes d'écart,
+   rien sous quinze secondes, rien pour un niveau faible. */
+function fireAlertEpisode(ep, entree, secondsAhead) {
+  const now = horlogeAnnonces();
+  if (entree.spoken) return;
+  if (RANK[ep.maxLevel] < RANK.moderate) return;     // le faible reste visuel
+  if (alertCount >= MAX_ALERTS) return refuser(entree, 'plafond de quatre annonces atteint');
+  if (now - lastAlertMs < COOLDOWN_MS) {
+    return refuser(entree,
+      `cooldown — ${Math.round((COOLDOWN_MS - (now - lastAlertMs)) / 1000)} s restantes`);
+  }
+  if (secondsAhead < MIN_LEAD_SECONDS) return refuser(entree, 'trop tard, moins de 15 s');
+
+  entree.spoken = true; alertCount++; lastAlertMs = now;
+  const text = phraseEpisode(ep, secondsAhead);
   speak(text);
-  notify('Éblouissement à venir', text);
-  log(`Annonce ${alertCount}/${MAX_ALERTS} — « ${text} » · horloge ${fmtTime(now)}`);
+  notify('Soleil bas à venir', text);
+  // Distinguer les deux cas : une annonce peut être tardive parce que le suivi
+  // a démarré après le préavis cible, ce qui n'est pas la même chose qu'un
+  // préavis mal choisi.
+  const tardive = secondsAhead < entree.targetLeadSeconds - 30;
+  log(`Annonce ${alertCount}/${MAX_ALERTS} — « ${text} » · horloge ${fmtTime(now)}`
+    + ` · ${ep.id} · ${tardive
+        ? `tardive (${Math.round(secondsAhead)} s au lieu de ${entree.targetLeadSeconds} s cibles,`
+          + ' suivi démarré après le préavis)'
+        : 'au préavis cible'}`);
+}
+
+/** Journalise un refus UNE seule fois par épisode : un épisode écarté ne doit
+    pas disparaître en silence, mais ne doit pas non plus inonder le journal. */
+function refuser(entree, raison) {
+  if (entree.refuseDit === raison) return;
+  entree.refuseDit = raison;
+  log(`${entree.episodeId} non annoncé : ${raison}.`);
 }
 
 /** Indice de l'échantillon correspondant à une distance parcourue.
@@ -2410,15 +2472,18 @@ function reanalyzeIfDrifted(along) {
   const derive = Date.now() - (state.result.departureMs + ecoule);
   if (Math.abs(derive) < DRIFT_MS) return;
 
-  const dejaDites = state.result.zones.filter((z) => z.announced);
+  const ancienPlan = marquerCouverture();
   const ancienneszones = state.result.zones;
   state.result = analyze(state.route, Date.now() - ecoule);
   reporterRelief(ancienneszones, state.result.zones);
   reporterMeteo(ancienneszones, state.result.zones);
-  // Une zone déjà passée, ou qui recouvre une zone déjà annoncée, se tait.
-  for (const z of state.result.zones) {
-    if (z.endD <= along
-      || dejaDites.some((d) => z.startD < d.endD && d.startD < z.endD)) z.announced = true;
+  // Les épisodes sont reconstruits sur les nouvelles zones, et ce qui a déjà
+  // été dit le reste : un recalage d'horloge ne fait jamais reparler un moment
+  // déjà annoncé.
+  rebatirCoucheProduit(ancienPlan);
+  for (const e of state.plan) {
+    const ep = state.episodes.find((x) => x.id === e.episodeId);
+    if (ep && ep.endD <= along) e.spoken = true;
   }
   log(`Horaire recalé : ${Math.round(derive / 60000)} min d'écart avec l'heure `
     + `prévue. ${state.result.zones.length} zone(s) recalculée(s).`);
@@ -2436,52 +2501,63 @@ function onPosition(lat, lng, speedMps) {
   // La simulation fait défiler le trajet en trente secondes : l'horloge réelle
   // n'avance pas au même rythme, un recalage n'y aurait aucun sens.
   if (!state.sim) reanalyzeIfDrifted(p.along);
-  const zones = state.result.zones;
 
-  const next = zones.find((z) => z.endD > p.along);
+  // L'écran de conduite suit les ÉPISODES, pas les zones : le conducteur n'a
+  // pas à savoir que ce moment est fait de quatre passages.
+  const devant = state.episodes.filter((e) => e.endD > p.along);
+  const next = devant[0];
   if (!next) {
-    afficherSuivi({ etiq: 'Trajet', titre: 'Plus aucune zone importante sur ce trajet',
+    afficherSuivi({ etiq: 'Trajet', titre: 'Aucun autre moment important sur ce trajet',
       niveau: 'none', chiffres: [[fmtKm(state.route.totalM - p.along), 'restants']],
       progres: 1 });
+    renderLiveZones(p.along);
     return;
   }
 
   const gap = Math.max(0, next.startD - p.along);
   const secs = secondsTo(p.along, next.startD, speedMps);
+  const zoneRepr = state.result.zones[next.representativeZoneIndex];
+  // « Ensuite » : le moment d'après, s'il existe et s'il mérite d'être connu.
+  const apres = devant.find((e) => e !== next && RANK[e.maxLevel] >= RANK.moderate);
+  const ensuite = apres
+    ? `Ensuite : ${titreEpisode(apres).toLowerCase()} vers ${fmtTime(apres.startAt)}`
+    : '';
 
   if (gap === 0) {
-    // Zone en cours. La durée restante vient de la timeline Radius, la même
-    // horloge que celle qui a placé la zone — jamais d'une vitesse inventée.
     const restantS = secondsTo(p.along, next.endD, speedMps);
     const chiffres = restantS > 30
       ? [[`~${Math.max(1, Math.round(restantS / 60))} min`, 'encore'],
          [fmtKm(next.endD - p.along), 'restants']]
-      : [[fmtKm(next.endD - p.along), 'jusqu’à la fin de cette portion']];
-    afficherSuivi({ etiq: 'Zone en cours', titre: titreZone(next), niveau: next.level,
-      chiffres, progres: 1, zone: next });
+      : [[fmtKm(next.endD - p.along), 'jusqu’à la fin de ce moment']];
+    afficherSuivi({ etiq: 'Moment en cours', titre: titreEpisode(next), niveau: next.maxLevel,
+      chiffres, progres: 1, zone: zoneRepr, ensuite });
   } else {
-    const chiffres = [[`${Math.max(1, Math.round(secs / 60))} min`, 'avant la zone'],
+    const chiffres = [[`${Math.max(1, Math.round(secs / 60))} min`, 'avant ce moment'],
                       [fmtKm(gap), 'de distance']];
-    const duree = Math.round(next.seconds / 60);
-    if (duree >= 1) chiffres.push([`~${duree} min`, 'de zone']);
-    afficherSuivi({ etiq: 'Prochaine zone', titre: titreZone(next), niveau: next.level,
-      chiffres, progres: progressionVers(next, gap), zone: next });
+    const expo = Math.round(next.exposedSeconds / 60);
+    if (expo >= 1) chiffres.push([`~${expo} min`, 'de soleil']);
+    afficherSuivi({ etiq: 'Prochain moment', titre: titreEpisode(next), niveau: next.maxLevel,
+      chiffres, progres: progressionVers(next, gap), zone: zoneRepr, ensuite });
   }
 
-  // L'affichage suit la zone la plus proche ; l'alerte doit voir par-dessus
-  // une zone faible qui masquerait une zone forte derrière elle.
-  const cible = zones.find((z) => z.endD > p.along && RANK[z.level] >= RANK.moderate);
-  if (cible) {
-    const attente = secondsTo(p.along, cible.startD, speedMps);
-    if (attente <= LEAD_SECONDS) fireAlert(cible, attente);
+  // L'affichage suit le moment le plus proche ; l'annonce, elle, doit voir
+  // par-dessus un moment faible qui en masquerait un fort derrière lui — et ne
+  // parler que si le plan l'a retenu.
+  for (const e of devant) {
+    if (RANK[e.maxLevel] < RANK.moderate) continue;
+    const entree = state.plan.find((x) => x.episodeId === e.id && x.selected);
+    if (!entree || entree.spoken) continue;
+    const attente = secondsTo(p.along, e.startD, speedMps);
+    if (attente <= entree.targetLeadSeconds) fireAlertEpisode(e, entree, attente);
+    break;                       // un seul candidat à la fois, le plus proche
   }
   renderLiveZones(p.along);
 }
 
-/* Progression vers la zone suivante. Il n'existe aucune distance de référence
-   dans les données : on retient l'écart au moment où cette zone est devenue la
-   prochaine, et la barre se remplit par rapport à lui. C'est de l'affichage,
-   rien n'en dépend. */
+/* Progression vers le moment suivant. Il n'existe aucune distance de référence
+   dans les données : on retient l'écart quand ce moment est devenu le prochain,
+   et la barre se remplit par rapport à lui. C'est de l'affichage, rien n'en
+   dépend. */
 function progressionVers(zone, gap) {
   const su = state.suivi;
   if (!su || su.zone !== zone) { state.suivi = { zone, ecart0: gap }; return 0; }
@@ -2491,7 +2567,7 @@ function progressionVers(zone, gap) {
 
 /* Écran compagnon : une seule chose à lire à la fois. Angles, seuils, DNI et
    journal ne passent plus par ici — ils vivent dans « Détails techniques ». */
-function afficherSuivi({ etiq, titre, niveau, chiffres, progres, zone }) {
+function afficherSuivi({ etiq, titre, niveau, chiffres, progres, zone, ensuite }) {
   $('suiv').className = 'suiv ' + (niveau || 'none');
   $('suivEtiq').textContent = etiq;
   $('suivTitre').textContent = titre;
@@ -2505,19 +2581,25 @@ function afficherSuivi({ etiq, titre, niveau, chiffres, progres, zone }) {
     rel.className = 'rel ' + e.classe;
     rel.innerHTML = `<span class="marq">${e.marque}</span>${e.texte}`;
   } else { rel.className = 'rel'; rel.textContent = ''; }
+  const suite = $('suivEnsuite');
+  suite.textContent = ensuite || '';
+  suite.classList.toggle('hide', !ensuite);
 }
 
 function renderLiveZones(along) {
   const l = $('liveZones');
   l.innerHTML = '';
-  for (const z of state.result.zones) {
-    const done = z.endD <= along;
+  for (const e of state.episodes) {
+    const passe = e.endD <= along;
+    const entree = state.plan.find((x) => x.episodeId === e.id);
     const li = document.createElement('li');
-    li.style.opacity = done ? '.35' : '1';
-    li.innerHTML = `<span class="dot ${z.level}"></span>
-      <div class="zt"><b>${titreZone(z)}</b>
-      <span>${done ? 'passée' : 'dans ' + fmtKm(Math.max(0, z.startD - along))}</span></div>
-      <div class="zk">${z.announced ? 'annoncée' : ''}</div>`;
+    li.style.opacity = passe ? '.35' : '1';
+    li.innerHTML = `<span class="dot ${e.maxLevel}"></span>
+      <div class="zt"><b>${titreEpisode(e)}</b>
+      <span>${passe ? 'passé' : 'dans ' + fmtKm(Math.max(0, e.startD - along))}`
+      + `${e.sourceZoneCount > 1 ? ` · ${e.sourceZoneCount} passages` : ''}</span></div>
+      <div class="zk">${entree && entree.spoken ? 'annoncé'
+        : entree && entree.selected ? 'à annoncer' : ''}</div>`;
     l.appendChild(li);
   }
 }
@@ -2776,7 +2858,9 @@ $('sim').onclick = () => {
   state.demarrage = 'test';
   setMode('test');
   alertCount = 0; lastAlertMs = 0;
-  for (const z of state.result.zones) z.announced = false;
+  // Même couche produit qu'en suivi réel : mêmes épisodes, même plan, mêmes
+  // priorités. Seule l'horloge diffère, et elle est déjà partagée.
+  rebatirCoucheProduit();
   state.lastIdx = null; state.lastFixMs = Date.now();
   state.simHorlogeMs = state.result.departureMs;
   state.health = setInterval(refreshHealth, 1000);
