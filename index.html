@@ -287,6 +287,7 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
   <div class="field">
     <button id="start">Démarrer le suivi</button>
   </div>
+  <div id="ancreRecal"></div>
   <div class="field">
     <button class="go" id="sim">Tester sans GPS</button>
   </div>
@@ -350,6 +351,17 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
     Sur Samsung, désactivez l’optimisation de batterie pour le navigateur, sinon Android
     endort la page dès que vous passez sur Waze.</p>
 </section>
+
+<!-- ========== PANNEAU DE RECALAGE — trajet planifié, suivi demandé ========== -->
+<div class="confirm hide" id="recalPanneau">
+  <p class="petit-titre">Trajet planifié</p>
+  <p class="sens" id="recalTexte"></p>
+  <p>Le suivi compare votre position au trajet analysé. Pour le suivre maintenant,
+    il faut le recalculer à l’heure actuelle — nouvel itinéraire, nouveau trafic,
+    nouvelle position du soleil.</p>
+  <button id="recalMaintenant">Recalculer pour maintenant</button>
+  <button class="ghost mini" id="recalAnnuler" style="margin-top:9px">Annuler</button>
+</div>
 
 <!-- ========== PANNEAU RETOUR — unique, déplacé dans l'écran actif ========== -->
 <div class="confirm hide" id="retourPanneau">
@@ -1089,7 +1101,7 @@ const $ = (id) => document.getElementById(id);
 const state = { from: null, to: null, route: null, result: null, watch: null,
                 audio: null, wake: null, sim: null, swReg: null,
                 lastFixMs: 0, lastIdx: null, health: null, mode: null,
-                analyseEnCours: false, suivi: null, trajet: null,
+                analyseEnCours: false, suivi: null, trajet: null, demarrage: null,
                 relief: { requetes: 0, points: 0 },
                 meteo: { requetes: 0, zones: 0 } };
 
@@ -1165,6 +1177,12 @@ $('useHere').onclick = () => {
 };
 
 /* ---- heure de départ du formulaire ---- */
+/* Le champ heure n'a pas de secondes : une saisie « maintenant » est déjà en
+   retard de moins d'une minute au moment où on la lit. Deux minutes couvrent
+   cet arrondi et le temps de traitement, sans jamais permettre d'analyser un
+   vrai trajet passé — le plus petit écart réel se compte en dizaines de minutes. */
+const TOLERANCE_DEPART_MS = 120000;
+
 /** Instant saisi dans le formulaire. NaN si la date ou l'heure est incomplète :
     c'est le seul endroit qui lit ces deux champs. */
 function lireDepart() {
@@ -1218,7 +1236,7 @@ function arreterSuivi() {
   if (state.sim) { clearInterval(state.sim); state.sim = null; }
   if (state.health) { clearInterval(state.health); state.health = null; }
   state.watch = null; state.lastIdx = null; state.lastFixMs = 0;
-  state.mode = null;
+  state.mode = null; state.demarrage = null;
   $('suiv').classList.remove('stale');
   $('aliveWarn').classList.add('hide');
   $('modeBanner').classList.add('hide');
@@ -1243,6 +1261,7 @@ function viderAffichageTrajet() {
   $('techZones').innerHTML = '';
   $('attribMeteo').classList.add('hide'); $('attribMeteo').textContent = '';
   fermerPanneauRetour();
+  fermerPanneauRecal();
   $('suivTitre').textContent = 'En attente du GPS…';
   $('suivChiffres').innerHTML = ''; $('suivRelief').textContent = '';
   $('suivBarre').style.width = '0%';
@@ -1279,7 +1298,8 @@ function montrerSaisie(message) {
    lançaient A→B et B→A en parallèle : la réponse la plus lente écrasait
    l'autre, et l'écran ne disait pas lequel des deux sens il montrait. */
 const COMMANDES_ANALYSE = ['analyze', 'swap', 'sim', 'start',
-                           'retourResult', 'retourTrack', 'retourCalculer'];
+                           'retourResult', 'retourTrack', 'retourCalculer',
+                           'recalMaintenant'];
 
 function verrouillerCommandes(actif, origine) {
   for (const id of COMMANDES_ANALYSE) { const b = $(id); if (b) b.disabled = actif; }
@@ -1308,6 +1328,14 @@ async function analyserTrajet(departureMs, options = {}) {
   // « Aucun éblouissement prévu » — indiscernable d'un vrai feu vert.
   if (!Number.isFinite(departureMs)) {
     montrerSaisie('Date ou heure incomplète.');
+    return false;
+  }
+  // Un départ passé mélangeait deux temps sans le dire : `api/route` retombe
+  // sur « maintenant » pour ne pas être refusé par Google, tandis que le
+  // moteur solaire, lui, calculait à la date demandée. Radius n'a pas de
+  // fonction historique, et n'a donc rien à faire d'un trajet passé.
+  if (departureMs < Date.now() - TOLERANCE_DEPART_MS) {
+    montrerSaisie('Cette heure est déjà passée. Choisissez une heure actuelle ou future.');
     return false;
   }
 
@@ -2212,8 +2240,57 @@ function setMode(m) {
 }
 
 /* ---- démarrage du suivi ---- */
+/* Une seule source de progression peut être active : aucune, le suivi réel, ou
+   la simulation. Jamais deux. $('start') est asynchrone — il rend la main sur la
+   demande de permission — et pendant cette fenêtre #sim restait cliquable : les
+   deux modes démarraient, et le bandeau affichait « le GPS n'est pas utilisé »
+   alors que watchPosition tournait. Le drapeau est posé AVANT le premier await. */
+function modeLibre() {
+  return !state.demarrage && state.mode == null && state.watch == null && !state.sim;
+}
+
+/* Écart au-delà duquel le suivi d'un trajet planifié n'a plus de sens sans
+   recalcul. En deçà, les zones décrivent encore l'instant où l'on part et le
+   suivi démarre tel quel : c'est le cas normal, on analyse puis on s'en va. */
+const RECALAGE_SEUIL_MS = 600000;   // dix minutes
+
+/* Le suivi ne change JAMAIS l'heure d'une analyse en silence. Auparavant,
+   $('start') faisait analyze(route, Date.now()) sans condition : un trajet
+   analysé pour demain 06:15 devenait « maintenant », le verdict changeait sous
+   les yeux de l'utilisateur, et la géométrie restait celle de demain. */
+function departPlanifieLoin() {
+  return state.result
+    && Math.abs(state.result.departureMs - Date.now()) > RECALAGE_SEUIL_MS;
+}
+
+function fermerPanneauRecal() { $('recalPanneau').classList.add('hide'); }
+
+$('recalAnnuler').onclick = () => { fermerPanneauRecal(); };
+
+/* Recalculer, c'est refaire le trajet entier à l'heure actuelle : nouvelle
+   route Google, nouveau trafic, nouveau soleil, nouveau relief, nouvelle météo.
+   L'utilisateur revient sur l'écran de résultat et relit avant de partir. */
+$('recalMaintenant').onclick = () => {
+  fermerPanneauRecal();
+  analyserTrajet(Date.now(), { origine: 'aller' });
+};
+
 $('start').onclick = async () => {
   const btn = $('start');
+  if (!modeLibre()) return;
+
+  if (departPlanifieLoin()) {
+    const d = new Date(state.result.departureMs);
+    $('recalTexte').textContent = 'Ce trajet est prévu le '
+      + d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+      + ' à ' + fmtTime(state.result.departureMs) + '.';
+    $('ancreRecal').appendChild($('recalPanneau'));
+    $('recalPanneau').classList.remove('hide');
+    $('recalPanneau').scrollIntoView({ block: 'nearest' });
+    return;
+  }
+
+  state.demarrage = 'reel';
   btn.disabled = true; btn.textContent = 'Autorisations…';
 
   if ('Notification' in window && Notification.permission === 'default') {
@@ -2222,17 +2299,6 @@ $('start').onclick = async () => {
   // Une première parole déclenchée par le geste de l'utilisateur débloque
   // la synthèse vocale pour tout le reste du trajet.
   speak('Suivi activé.');
-
-  // Les zones décrivaient l'heure saisie dans le formulaire. Entre l'analyse
-  // et le départ réel il s'écoule souvent vingt minutes, et près du coucher
-  // l'azimut bouge d'un quart de degré par minute.
-  const maintenant = Date.now();
-  const ancienneszones = state.result ? state.result.zones : [];
-  state.result = analyze(state.route, maintenant);
-  reporterRelief(ancienneszones, state.result.zones);
-  reporterMeteo(ancienneszones, state.result.zones);
-  state.advice = { ref: state.result, best: null };   // désactivé en V0.2, voir plus haut
-  render();
 
   alertCount = 0; lastAlertMs = 0;
   state.lastIdx = null; state.lastFixMs = 0;
@@ -2254,7 +2320,8 @@ $('start').onclick = async () => {
   $('tracking').classList.remove('hide');
   renderLiveZones(0);
   log('Suivi démarré. ' + state.result.zones.length + ' zone(s) surveillée(s).');
-  btn.disabled = false; btn.textContent = 'Démarrer le suivi, puis ouvrir le GPS';
+  btn.disabled = false; btn.textContent = 'Démarrer le suivi';
+  state.demarrage = null;
   window.scrollTo(0, 0);
 };
 
@@ -2304,6 +2371,8 @@ $('openWaze').onclick = () => {
    l'itinéraire analysé, donc l'écart latéral est nul par construction et
    « hors itinéraire » ne peut pas apparaître à cause du téléphone. */
 $('sim').onclick = () => {
+  if (!modeLibre()) return;
+  state.demarrage = 'test';
   setMode('test');
   alertCount = 0; lastAlertMs = 0;
   for (const z of state.result.zones) z.announced = false;
@@ -2316,6 +2385,7 @@ $('sim').onclick = () => {
   speak('Simulation en cours.');
   log('Simulation : le trajet défile en accéléré.');
 
+  state.demarrage = null;
   const { coords, cum } = state.route;
   let idx = 0;
   const totalSteps = coords.length;

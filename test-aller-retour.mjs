@@ -51,10 +51,10 @@ const GEOM_RICHE = [
   [-20.948795, 55.538772], [-20.960464, 55.53156], [-21.004615, 55.564652],
   [-21.027954, 55.550229],
 ];
-const DEPART_RICHE = '2026-12-21T06:00';
+const DEPART_RICHE = '2026-12-22T06:00';
 
-const MAINTENANT = new Date(args.maintenant || '2026-12-21T18:05:00+04:00').getTime();
-const DEPART_ALLER = '2026-12-21T06:15';                // saisi dans le formulaire
+const MAINTENANT = new Date(args.maintenant || '2026-12-21T17:55:00+04:00').getTime();
+const DEPART_ALLER = '2026-12-22T06:15';                // lendemain : départ futur
 
 const GEOM_ALLER  = [[A.lat, A.lng], [B.lat, B.lng]];
 const GEOM_RETOUR = [[B.lat, B.lng], [B2.lat, B2.lng], [C.lat, C.lng], [A.lat, A.lng]];
@@ -327,7 +327,7 @@ console.log(`\nRadius aller/retour — racine ${RACINE}, scénario ${SCENARIO}\n
    du jour, il proposerait le 20 pour un aller le 21 — c'est exactement le
    défaut corrigé ici. */
 if (SCENARIO === 'planifie') {
-  const JOUR_ALLER = '2026-12-21';
+  const JOUR_ALLER = '2026-12-22';
   const HEURE_ALLER = '06:15';
   const HEURE_RETOUR = '17:30';
   /* L'attendu doit être lu dans le fuseau de la PAGE (Indian/Reunion), pas
@@ -739,7 +739,7 @@ console.log('\nTEST K — la simulation suit le retour');
 await page.goto(base + '/index.html');   // la navigation Maps a quitté la page
 await saisirAller();
 await page.click('#swap');
-await page.fill('#date', '2026-12-21'); await page.fill('#time', '18:05');
+await page.fill('#date', '2026-12-21'); await page.fill('#time', '17:55');
 await analyser();                        // B→A, mêmes entrées que le retour
 const zonesSim = await etatResultat();
 await page.click('#sim');
