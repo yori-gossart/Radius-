@@ -167,6 +167,65 @@ périmètre.
 **Jamais de radars, d'incidents, ni d'affichage de trafic.** Waze le fait mieux.
 Chaque ajout dans ce registre dilue la raison d'exister du produit.
 
+## Ce que les corrections post-audit ont figé
+
+Décisions du 5 septembre 2026, issues de l'audit du 4. Elles répondent toutes à
+la même famille de défaut : un composant conforme à une ancienne spécification,
+devenu faux depuis que les trajets planifiés existent.
+
+**Aucune mutation temporelle implicite.** « Démarrer le suivi » ne change jamais
+l'heure d'une analyse en silence. Au-delà de dix minutes d'écart, un panneau
+nomme la date prévue et propose de recalculer ; annuler laisse l'analyse
+strictement intacte, sans une requête. En deçà, le suivi démarre tel quel.
+
+**Un départ passé est refusé avant tout appel réseau.** `api/route` retombe sur
+« maintenant » pour ne pas être refusé par Google, tandis que le moteur solaire
+calcule à la date demandée : le résultat mélangeait deux instants sans le dire.
+Radius n'a pas de fonction historique. La tolérance de deux minutes couvre
+l'arrondi à la minute du champ heure, rien de plus.
+
+**Une seule source de progression à la fois** — aucune, le suivi réel, ou la
+simulation. Le drapeau est posé avant le premier `await` de `$('start')` : sans
+cela, `#sim` restait cliquable pendant la demande de permission, les deux modes
+démarraient, et le bandeau affirmait que le GPS n'était pas utilisé alors qu'il
+l'était.
+
+**Une panne de position mène à un état fini.** Refus, délai dépassé ou
+indisponibilité sont dits en clair, avec l'issue. Une panne muette se note
+« rien annoncé, rien vu » et se compte pour un vrai négatif.
+
+**La date s'affiche.** Hier, demain et dans trois jours ne doivent jamais être
+indiscernables, et un trajet franchissant minuit le signale.
+
+**Le mode test exerce la vraie règle de parole.** Le cooldown est arbitré par
+l'horloge du trajet, qui défile en accéléré en simulation. Il n'est plus
+neutralisé. Le journal horodate chaque annonce sur cette horloge — sans quoi
+l'espacement réel reste invisible, et c'est ce qui avait laissé le défaut passer.
+
+**Le cache du service worker porte une version**, et `/api/` n'y entre jamais :
+une altitude ou une météo servie depuis le cache serait un relevé faux.
+
+**La voix peut être coupée** sans arrêter le suivi. Les annonces restent
+détectées et journalisées : on peut relever un trajet en silence sans rien perdre.
+
+**« Position enregistrée au départ »** est le nom d'un point « Ma position »
+devenu une arrivée. Ce n'est pas la position actuelle, et le libellé le dit.
+
+**Ce que Radius transmet est écrit dans l'interface.** L'ancienne phrase
+« Aucune donnée de position n'est transmise ni conservée » était fausse : elle
+n'était vraie que de la position suivie en roulant. Le bloc « Données utilisées »
+nomme chaque destinataire — Google Routes, Google Elevation, Open-Meteo,
+Nominatim, Vercel — et ne promet rien sur ce que ces tiers conservent.
+L'attribution OpenStreetMap/ODbL est affichée là où l'adresse est saisie.
+
+**Le contrôle d'origine des endpoints est une friction, pas une
+authentification.** `Origin` et `Referer` sont posés par le navigateur et
+forgeables par tout client qui n'en est pas un. Il écarte l'appel depuis une
+autre page web ; il n'arrête pas un script. **La seule protection réelle contre
+un abus de quota est le plafond de budget côté Google Cloud**, qui est une
+action de compte, pas de code. `RADIUS_ORIGINES` permet d'ajouter des hôtes sans
+redéployer si le domaine change.
+
 ## La règle de parole
 
 Le produit parle **par-dessus un GPS qui parle déjà**, et aucun système

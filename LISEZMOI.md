@@ -30,7 +30,7 @@ Sans cela, One UI endort la page dès que Waze passe devant et vous ne recevrez 
 
 ## Premier essai, sans conduire
 
-Analyser un trajet, puis **Simuler le trajet**. Le parcours défile en accéléré,
+Analyser un trajet, puis **Tester sans GPS**. Le parcours défile en accéléré,
 les annonces se déclenchent. Cela vérifie la voix et les notifications en trente secondes.
 
 ## Essai réel
@@ -46,8 +46,14 @@ vers le soleil couchant.
 
 ## Ce que ce prototype ne fait pas encore
 
-- **Le relief.** Un soleil masqué par un morne sera quand même annoncé.
-  Le module existe côté moteur mais il lui faut des données d'altitude serveur.
+- **Le relief ignore les bâtiments et la végétation.** Il est branché depuis la
+  V0.3 — Google Elevation, au point représentatif de chaque zone — mais il ne
+  voit que le terrain naturel. Un soleil caché par un immeuble ou un rideau
+  d'arbres sera encore annoncé.
+- **La météo mesure, elle ne conclut pas.** Open-Meteo est interrogé depuis la
+  V0.4 et enregistre DNI, nuages, visibilité et pluie au point et à l'heure de
+  chaque zone. Aucun seuil météo n'existe : ces valeurs ne modifient ni le
+  niveau, ni les annonces.
 - **Le maintien en arrière-plan est un contournement** — un flux audio inaudible
   empêche Android d'endormir la page. Ça fonctionne, ce n'est pas propre.
   Seule une application native le fera correctement.

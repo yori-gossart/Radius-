@@ -16,7 +16,13 @@ globalThis.fetch = async () => new Response(JSON.stringify(mock), { status: 200,
 const mod = await import('./api/route.js');
 const request = new Request('https://radius.test/api/route', {
   method: 'POST',
-  headers: { 'content-type': 'application/json' },
+  // Depuis le durcissement des entrées, un appel sans origine ni referer est
+  // refusé : ce test envoie ce qu'un navigateur same-origin envoie vraiment.
+  headers: {
+    'content-type': 'application/json',
+    host: 'radius.test',
+    origin: 'https://radius.test',
+  },
   body: JSON.stringify({ origin: {lat:-20.89,lng:55.45}, destination:{lat:-20.88,lng:55.46}, departureMs: Date.now()+3600000 }),
 });
 const response = await mod.default.fetch(request);

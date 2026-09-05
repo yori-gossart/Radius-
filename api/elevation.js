@@ -23,18 +23,81 @@ function nombreValide(v, min, max) {
 
 function pointValide(p) {
   return Array.isArray(p) && p.length >= 2
-    && nombreValide(Number(p[0]), -90, 90)
-    && nombreValide(Number(p[1]), -180, 180);
+    && nombreValide(nombreStrict(p[0]), -90, 90)
+    && nombreValide(nombreStrict(p[1]), -180, 180);
 }
 
 // Cinq décimales suffisent — environ un mètre — et raccourcissent l'URL.
-const enTexte = (p) => `${Number(p[0]).toFixed(5)},${Number(p[1]).toFixed(5)}`;
+const enTexte = (p) => `${nombreStrict(p[0]).toFixed(5)},${nombreStrict(p[1]).toFixed(5)}`;
+
+// ---- garde-fous d'entrée -------------------------------------------------
+// Number(null), Number(''), Number(false) et Number([]) valent tous 0 : une
+// coordonnée absente devenait donc l'équateur au lieu d'être refusée, et
+// consommait un appel facturé. On n'accepte qu'un vrai nombre, ou une chaîne
+// qui en est un.
+function nombreStrict(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : NaN;
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : NaN;
+  }
+  return NaN;
+}
+
+// Corps borné : au-delà, on refuse sans lire. Un lot de 200 points d'altitude
+// pèse environ 5 Ko ; 32 Ko laissent une marge confortable.
+const TAILLE_MAX_CORPS = 32768;
+
+function corpsTropGros(request) {
+  const n = Number(request.headers.get('content-length'));
+  return Number.isFinite(n) && n > TAILLE_MAX_CORPS;
+}
+
+function typeIncorrect(request) {
+  const t = String(request.headers.get('content-type') || '').toLowerCase();
+  return !t.includes('application/json');
+}
+
+// Friction, PAS une authentification. Origin et Referer sont posés par le
+// navigateur et peuvent être forgés par n'importe quel client non navigateur :
+// ce contrôle écarte les appels depuis une autre page web, il n'arrête pas un
+// script. La vraie protection est le plafond de budget côté Google Cloud.
+function origineEtrangere(request) {
+  const hote = request.headers.get('host') || (() => {
+    try { return new URL(request.url).host; } catch { return ''; }
+  })();
+  if (!hote) return false;
+  const source = request.headers.get('origin') || request.headers.get('referer');
+  if (!source) return true;
+  let venuDe;
+  try { venuDe = new URL(source).host; } catch { return true; }
+  if (venuDe === hote) return false;
+  // Soupape : si un jour l'application est servie sous un domaine dont l'hôte
+  // ne coïncide plus avec l'origine, RADIUS_ORIGINES évite de redéployer le
+  // code pour la remettre en marche. Vide par défaut.
+  const permis = String(process.env.RADIUS_ORIGINES || '')
+    .split(',').map((x) => x.trim()).filter(Boolean);
+  return !permis.includes(venuDe);
+}
+
+function refusEntree(request) {
+  if (request.method !== 'POST') return json({ error: 'Méthode non autorisée.' }, 405);
+  if (typeIncorrect(request)) {
+    return json({ error: 'Content-Type attendu : application/json.', code: 'TYPE_INCORRECT' }, 415);
+  }
+  if (corpsTropGros(request)) {
+    return json({ error: 'Corps de requête trop volumineux.', code: 'CORPS_TROP_GROS' }, 413);
+  }
+  if (origineEtrangere(request)) {
+    return json({ error: 'Origine non autorisée.', code: 'ORIGINE_ETRANGERE' }, 403);
+  }
+  return null;
+}
 
 export default {
   async fetch(request) {
-    if (request.method !== 'POST') {
-      return json({ error: 'Méthode non autorisée.' }, 405);
-    }
+    const refus = refusEntree(request);
+    if (refus) return refus;
 
     const apiKey = process.env.GOOGLE_MAPS_API_KEY;
     if (!apiKey) {

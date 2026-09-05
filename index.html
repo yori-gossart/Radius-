@@ -234,6 +234,7 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
     <label for="from">Départ</label>
     <input id="from" placeholder="Adresse de départ" autocomplete="off">
     <ul class="suggest hide" id="sugFrom"></ul>
+    <p class="attrib" id="attribOsm">Adresses © les contributeurs OpenStreetMap (ODbL)</p>
     <button class="ghost mini" id="useHere" style="margin-top:9px">Utiliser ma position actuelle</button>
   </div>
   <div class="swapline">
@@ -401,24 +402,51 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
   </div>
 </details>
 
+<details id="donnees">
+  <summary>Données utilisées</summary>
+  <div class="dcorps">
+    <p><b>Ce qui reste sur l’appareil.</b> Votre position pendant le suivi n’est
+      jamais envoyée : elle sert uniquement à vous situer sur le trajet analysé.
+      Radius n’enregistre aucun trajet, aucun historique, aucun cookie — rien
+      n’est conservé d’une ouverture à l’autre.</p>
+    <p><b>Ce qui est transmis, et à qui.</b></p>
+    <p class="attenuee">
+      Départ et arrivée → <b>Google Routes</b>, pour l’itinéraire et l’heure d’arrivée.<br>
+      Points des zones détectées → <b>Google Elevation</b>, pour le relief.<br>
+      Points des zones et heures de passage → <b>Open-Meteo</b>, pour les conditions prévues.<br>
+      Texte d’adresse saisi → <b>Nominatim</b> (OpenStreetMap), pour la recherche d’adresse.<br>
+      « Ouvrir Maps » ou « Ouvrir Waze » transmet le trajet à ces applications.
+    </p>
+    <p class="attenuee">Ces services reçoivent aussi votre adresse IP, comme pour
+      toute page web. Radius est hébergé sur Vercel, qui journalise les requêtes.
+      Ce que ces tiers conservent relève de leurs propres conditions.</p>
+    <p class="attenuee">La clé Google reste côté serveur et n’est jamais envoyée
+      au navigateur.</p>
+  </div>
+</details>
+
 <details id="apropos">
   <summary>À propos de Radius</summary>
   <div class="dcorps">
     <p>Radius prévoit où et quand le soleil sera bas dans l’axe de votre route,
       et vous prévient avant que vous y arriviez. Il ne remplace aucun GPS.</p>
-    <p class="attenuee">Itinéraire et heure d’arrivée fournis par Google Routes avec trafic.
-      Adresses par Nominatim. Relief par Google Elevation. Conditions prévues par
-      Open-Meteo. La clé Google reste côté serveur et n’est jamais envoyée au navigateur.</p>
+    <p><b>Préparez Radius avant de prendre la route.</b> Pendant la conduite,
+      gardez votre attention sur la circulation et respectez le Code de la route.
+      Saisissez le trajet, réglez le son et préparez le retour à l’arrêt.</p>
     <p class="attenuee">Les seuils de détection ne sont pas encore calibrés sur des relevés
       de terrain. Le calcul du relief ne tient pas compte des bâtiments ni des arbres.
       Les conditions météo sont enregistrées mais ne modifient encore ni le niveau,
       ni les annonces.</p>
+    <p class="attenuee">Itinéraire, heure d’arrivée et relief : Google Maps Platform.
+      Conditions prévues : Weather data by Open-Meteo.com (CC BY 4.0).
+      Adresses : Nominatim, données © les contributeurs OpenStreetMap, sous ODbL.</p>
   </div>
 </details>
 
 <footer>
   Information prévisionnelle. Ne dispense en aucun cas de la vigilance du conducteur.<br>
-  Aucune donnée de position n’est transmise ni conservée.
+  Radius n’enregistre aucun trajet. Les coordonnées nécessaires aux calculs sont
+  transmises aux services qui les fournissent — voir <em>Données utilisées</em>.
 </footer>
 
 </div>

@@ -39,9 +39,9 @@ function json(body, status = 200) {
 const nombreValide = (v, min, max) => Number.isFinite(v) && v >= min && v <= max;
 
 function observationValide(o) {
-  return o && nombreValide(Number(o.lat), -90, 90)
-    && nombreValide(Number(o.lng), -180, 180)
-    && Number.isFinite(Number(o.passageTimeMs));
+  return !!o && nombreValide(nombreStrict(o.lat), -90, 90)
+    && nombreValide(nombreStrict(o.lng), -180, 180)
+    && Number.isFinite(nombreStrict(o.passageTimeMs));
 }
 
 const normaliseUnite = (u) => String(u ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -94,9 +94,74 @@ function echeanceLaPlusProche(temps, passageMs) {
   return meilleur;
 }
 
+// ---- garde-fous d'entrée -------------------------------------------------
+// Number(null), Number(''), Number(false) et Number([]) valent tous 0 : une
+// coordonnée absente devenait donc l'équateur au lieu d'être refusée, et
+// consommait un appel facturé. On n'accepte qu'un vrai nombre, ou une chaîne
+// qui en est un.
+function nombreStrict(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : NaN;
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : NaN;
+  }
+  return NaN;
+}
+
+// Corps borné : au-delà, on refuse sans lire. Un lot de 200 points d'altitude
+// pèse environ 5 Ko ; 32 Ko laissent une marge confortable.
+const TAILLE_MAX_CORPS = 32768;
+
+function corpsTropGros(request) {
+  const n = Number(request.headers.get('content-length'));
+  return Number.isFinite(n) && n > TAILLE_MAX_CORPS;
+}
+
+function typeIncorrect(request) {
+  const t = String(request.headers.get('content-type') || '').toLowerCase();
+  return !t.includes('application/json');
+}
+
+// Friction, PAS une authentification. Origin et Referer sont posés par le
+// navigateur et peuvent être forgés par n'importe quel client non navigateur :
+// ce contrôle écarte les appels depuis une autre page web, il n'arrête pas un
+// script. La vraie protection est le plafond de budget côté Google Cloud.
+function origineEtrangere(request) {
+  const hote = request.headers.get('host') || (() => {
+    try { return new URL(request.url).host; } catch { return ''; }
+  })();
+  if (!hote) return false;
+  const source = request.headers.get('origin') || request.headers.get('referer');
+  if (!source) return true;
+  let venuDe;
+  try { venuDe = new URL(source).host; } catch { return true; }
+  if (venuDe === hote) return false;
+  // Soupape : si un jour l'application est servie sous un domaine dont l'hôte
+  // ne coïncide plus avec l'origine, RADIUS_ORIGINES évite de redéployer le
+  // code pour la remettre en marche. Vide par défaut.
+  const permis = String(process.env.RADIUS_ORIGINES || '')
+    .split(',').map((x) => x.trim()).filter(Boolean);
+  return !permis.includes(venuDe);
+}
+
+function refusEntree(request) {
+  if (request.method !== 'POST') return json({ error: 'Méthode non autorisée.' }, 405);
+  if (typeIncorrect(request)) {
+    return json({ error: 'Content-Type attendu : application/json.', code: 'TYPE_INCORRECT' }, 415);
+  }
+  if (corpsTropGros(request)) {
+    return json({ error: 'Corps de requête trop volumineux.', code: 'CORPS_TROP_GROS' }, 413);
+  }
+  if (origineEtrangere(request)) {
+    return json({ error: 'Origine non autorisée.', code: 'ORIGINE_ETRANGERE' }, 403);
+  }
+  return null;
+}
+
 export default {
   async fetch(request) {
-    if (request.method !== 'POST') return json({ error: 'Méthode non autorisée.' }, 405);
+    const refus = refusEntree(request);
+    if (refus) return refus;
 
     let body;
     try { body = await request.json(); }
@@ -112,8 +177,8 @@ export default {
       return json({ error: 'Observation invalide : latitude, longitude ou heure de passage.' }, 400);
     }
 
-    const url = `${OPEN_METEO_URL}?latitude=${obs.map((o) => Number(o.lat).toFixed(4)).join(',')}`
-      + `&longitude=${obs.map((o) => Number(o.lng).toFixed(4)).join(',')}`
+    const url = `${OPEN_METEO_URL}?latitude=${obs.map((o) => nombreStrict(o.lat).toFixed(4)).join(',')}`
+      + `&longitude=${obs.map((o) => nombreStrict(o.lng).toFixed(4)).join(',')}`
       + `&hourly=${VARIABLES.join(',')}`
       + '&timezone=UTC&timeformat=iso8601&forecast_days=3';
 
@@ -152,7 +217,7 @@ export default {
           warnings: ['bloc horaire ou unités absents pour ce lieu'] };
       }
 
-      const ech = echeanceLaPlusProche(h.time, Number(o.passageTimeMs));
+      const ech = echeanceLaPlusProche(h.time, nombreStrict(o.passageTimeMs));
       if (!ech) {
         return { status: 'unknown', provider: 'open-meteo', fetchedAt,
           warnings: ['aucune échéance horaire exploitable'] };
@@ -189,7 +254,7 @@ export default {
         // Heure de passage sur laquelle l'appariement a été fait. Le bandeau de
         // la zone affiche son DÉBUT ; relief et météo travaillent sur le point
         // représentatif. Sans ce champ, l'écart affiché est irréconciliable.
-        passageTime: new Date(Number(o.passageTimeMs)).toISOString(),
+        passageTime: new Date(nombreStrict(o.passageTimeMs)).toISOString(),
 
         // Unités réellement reçues, remontées telles quelles : c'est ce qui
         // permet de constater un changement de contrat plutôt que de le subir.

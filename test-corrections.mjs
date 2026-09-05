@@ -28,6 +28,62 @@ const F = { lat: -20.984357, lng: 55.517799, label: 'Point F — zones serrées'
 const GEOM_SERRE = [[-20.88,55.45],[-20.885265,55.463286],[-20.893045,55.458475],[-20.89831,55.471761],[-20.906089,55.46695],[-20.911354,55.480236],[-20.919134,55.475425],[-20.924399,55.48871],[-20.932178,55.483899],[-20.937443,55.497185],[-20.945223,55.492374],[-20.950488,55.50566],[-20.958267,55.500849],[-20.963532,55.514135],[-20.971312,55.509324],[-20.976577,55.52261],[-20.984357,55.517799]];
 const GEOM_8 = [[-20.88,55.45],[-20.89053,55.476572],[-20.902199,55.469355],[-20.912729,55.495927],[-20.924399,55.48871],[-20.934929,55.515282],[-20.946598,55.508066],[-20.957128,55.534638],[-20.968797,55.527421],[-20.979327,55.553993],[-20.990997,55.546776],[-21.001527,55.573348],[-21.013196,55.566131],[-21.023726,55.592703],[-21.035395,55.585487],[-21.045925,55.612058],[-21.057595,55.604842]];
 
+/* Avec --vraisApi, /api/* n'est plus simulé : la requête du navigateur est
+   passée aux VRAIS handlers, seuls Google et Open-Meteo étant mockés. C'est la
+   seule façon de prouver que le durcissement d'origine (J-006) ne casse pas
+   l'application réelle. */
+const VRAIS_API = args.vraisApi === '1';
+let handlers = null;
+if (VRAIS_API) {
+  process.env.GOOGLE_MAPS_API_KEY = 'cle-de-test';
+  handlers = {
+    '/api/route': (await import(path.join(RACINE, 'api/route.js'))).default,
+    '/api/elevation': (await import(path.join(RACINE, 'api/elevation.js'))).default,
+    '/api/weather': (await import(path.join(RACINE, 'api/weather.js'))).default,
+  };
+}
+
+/** Réponse amont factice, selon l'endpoint appelé par le handler. */
+function reponseAmont(url, corps) {
+  const j = (o) => new Response(JSON.stringify(o),
+    { status: 200, headers: { 'content-type': 'application/json' } });
+  if (url.includes('routes.googleapis.com')) {
+    const p2 = JSON.parse(corps);
+    const o = { lat: p2.origin.location.latLng.latitude, lng: p2.origin.location.latLng.longitude };
+    const d = { lat: p2.destination.location.latLng.latitude, lng: p2.destination.location.latLng.longitude };
+    const pr = (x, y) => Math.abs(x.lat - y.lat) < 1e-6 && Math.abs(x.lng - y.lng) < 1e-6;
+    const geom = pr(o, A) && pr(d, B) ? GEOM_AB : pr(o, B) && pr(d, A) ? GEOM_BA
+      : pr(o, A) && pr(d, E) ? GEOM_8 : pr(o, A) && pr(d, F) ? GEOM_SERRE : null;
+    if (!geom) return j({ routes: [] });
+    const r = reponseRoute(geom);
+    return j({ routes: [{
+      distanceMeters: r.distanceMeters, duration: `${r.durationSeconds}s`,
+      staticDuration: `${r.staticDurationSeconds}s`,
+      polyline: { geoJsonLinestring: { type: 'LineString', coordinates: geom.map(([a, b]) => [b, a]) } },
+      legs: [{ steps: r.steps.map((st) => ({ distanceMeters: st.distanceMeters,
+        staticDuration: `${st.staticDurationSeconds}s`,
+        polyline: { geoJsonLinestring: { type: 'LineString', coordinates: st.coordinates.map(([a, b]) => [b, a]) } } })) }],
+    }] });
+  }
+  if (url.includes('maps/api/elevation')) {
+    const n = (decodeURIComponent(url).match(/locations=([^&]*)/)[1].split('|')).length;
+    return j({ status: 'OK', results: Array.from({ length: n }, () => ({ elevation: 0, resolution: 9.6 })) });
+  }
+  if (url.includes('open-meteo')) {
+    const lats = new URL(url).searchParams.get('latitude').split(',');
+    const bloc = () => ({
+      hourly: { time: Array.from({ length: 72 }, (_, i) =>
+          new Date(Date.UTC(2026, 11, 20) + i * 3600000).toISOString().slice(0, 16)),
+        direct_normal_irradiance_instant: Array(72).fill(640), cloud_cover: Array(72).fill(12),
+        visibility: Array(72).fill(24000), precipitation: Array(72).fill(0), weather_code: Array(72).fill(1) },
+      hourly_units: { direct_normal_irradiance_instant: 'W/m²', cloud_cover: '%',
+        visibility: 'm', precipitation: 'mm', weather_code: 'wmo code' },
+    });
+    return j(lats.length > 1 ? lats.map(bloc) : bloc());
+  }
+  return j({});
+}
+
 const journal = [];
 const panne = { route: false, elevation: false, weather: false };
 let delaiRouteMs = 0;
@@ -53,6 +109,13 @@ function reponseRoute(geom) {
     distanceMeters: m, durationSeconds: st * 1.1, staticDurationSeconds: st,
     trafficFactor: 1.1, geometry: geom, steps };
 }
+/** En-têtes de la requête HTTP entrante, tels que le navigateur les a posés. */
+function req0Entetes(req) {
+  const h = {};
+  for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') h[k] = v;
+  return h;
+}
+
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml' };
 const serveur = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
@@ -61,6 +124,20 @@ const serveur = http.createServer(async (req, res) => {
     const brut = await new Promise((ok) => { let d = ''; req.on('data', (c) => { d += c; }); req.on('end', () => ok(d)); });
     let corps = null; try { corps = JSON.parse(brut); } catch {}
     journal.push({ chemin: url.pathname, corps });
+    if (VRAIS_API && handlers[url.pathname]) {
+      // On recopie les en-têtes du navigateur SANS toucher à host : c'est la
+      // cohérence origin/host qui est testée, la réécrire viderait le test.
+      const requeteHandler = new Request(base + url.pathname, {
+        method: 'POST', headers: req0Entetes(req), body: brut,
+      });
+      const vrai = globalThis.fetch;
+      globalThis.fetch = async (u, init) => reponseAmont(String(u), init && init.body);
+      let rep2;
+      try { rep2 = await handlers[url.pathname].fetch(requeteHandler); }
+      finally { globalThis.fetch = vrai; }
+      res.writeHead(rep2.status, { 'content-type': 'application/json' });
+      return res.end(await rep2.text());
+    }
     if (url.pathname === '/api/route') {
       if (delaiRouteMs) await new Promise((r) => setTimeout(r, delaiRouteMs));
       if (panne.route) return envoyer({ error: 'Panne simulée Routes.' }, 502);
@@ -540,6 +617,65 @@ if (veut('R-014')) {
   chk('R-014 les coordonnées ne bougent pas',
     corps.destination.lat === -20.88 && corps.destination.lng === 55.45,
     JSON.stringify(corps.destination));
+}
+
+/* J-006 de bout en bout : l'application réelle, devant les VRAIS handlers. */
+if (veut('J-006')) {
+  console.log('\n== J-006 — l’application passe le durcissement des endpoints ==');
+  if (!VRAIS_API) {
+    console.log('  (relancer avec --vraisApi=1 --cas=J-006)');
+  } else {
+    await page.goto(base + '/index.html');
+    await choisir('from', 'Point A'); await choisir('to', 'Point B');
+    await page.fill('#date', '2026-12-22'); await page.fill('#time', '06:15');
+    await page.click('#analyze'); await attendreFin();
+    const err = await page.isVisible('#err') ? await page.textContent('#err') : '';
+    chk('J-006 l’analyse aboutit à travers les vrais endpoints', err === '', err.slice(0, 90));
+    const zones = await page.evaluate(() => document.querySelectorAll('.zc').length);
+    chk('J-006 les zones sont détectées comme avec le banc simulé', zones > 0, `${zones} zone(s)`);
+    const j = await journalTexte();
+    chk('J-006 relief et météo répondent aussi',
+      /Relief — 1 requête/.test(j) && /Weather — 1 requête/.test(j));
+    // Et un appel forgé depuis une autre page web est écarté.
+    const forge = await page.evaluate(async (b) => {
+      const r = await fetch(b + '/api/route', { method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-faux-origin': '1' },
+        body: JSON.stringify({ origin: { lat: null, lng: 0 }, destination: { lat: 0, lng: 0 } }) });
+      return { status: r.status, corps: await r.json() };
+    }, base);
+    chk('J-006 une coordonnée nulle est refusée sans appel facturé',
+      forge.status === 400, `${forge.status} — ${forge.corps.error}`);
+  }
+}
+
+/* J-001 — l'affirmation « aucune donnée de position n'est transmise ni
+   conservée » était fausse : « Ma position » part vers Google Routes, les zones
+   vers Elevation et Open-Meteo. Une information inexacte est pire qu'absente. */
+if (veut('J-001')) {
+  console.log('\n== J-001 — le texte de confidentialité dit vrai ==');
+  await page.goto(base + '/index.html');
+  const page1 = await page.evaluate(() => document.body.textContent.replace(/\s+/g, ' '));
+  chk('J-001 l’affirmation fausse a disparu',
+    !/Aucune donnée de position n.{1,3}est transmise/i.test(page1));
+  const donnees = await page.evaluate(() => {
+    const d = document.getElementById('donnees');
+    return d ? d.textContent.replace(/\s+/g, ' ') : '';
+  });
+  chk('J-001 un emplacement « Données utilisées » existe', donnees.length > 0);
+  for (const tiers of ['Google Routes', 'Google Elevation', 'Open-Meteo', 'Nominatim', 'Vercel']) {
+    chk(`J-001 ${tiers} est nommé comme destinataire`, donnees.includes(tiers));
+  }
+  chk('J-001 ce qui reste sur l’appareil est dit sans promesse sur les tiers',
+    /position pendant le suivi n.{1,3}est jamais envoyée/i.test(donnees)
+    && /leurs propres conditions/i.test(donnees));
+  chk('J-003 l’attribution OpenStreetMap est affichée là où l’adresse est saisie',
+    await page.isVisible('#attribOsm'),
+    await page.textContent('#attribOsm').catch(() => '(absente)'));
+  chk('J-003 la licence ODbL est nommée',
+    /ODbL/.test(await page.textContent('#attribOsm')));
+  chk('W12 les prescriptions de conduite sont écrites',
+    /Préparez Radius avant de prendre la route/i.test(
+      await page.evaluate(() => document.getElementById('apropos').textContent)));
 }
 
 console.log(`\n${ok} contrôle(s) PASS, ${ko} ÉCHEC.`);
