@@ -1570,6 +1570,198 @@ $('back').onclick = () => {
 };
 
 /* ═══════════════════════════════════════════════════════════
+   6 bis 2. ÉPISODES — la couche produit de la V0.5
+   Une zone scientifique n'est pas un événement utilisateur. Quatre zones
+   « high / face » séparées de deux minutes décrivent UN moment vécu, pas
+   quatre. Ce bloc regroupe les zones en épisodes et décide lesquels méritent
+   une annonce. Il ne touche à rien en amont : les zones sont lues, jamais
+   modifiées, et chaque épisode garde la trace exacte de ses sources.
+
+   ATTENTION — les constantes ci-dessous sont des constantes d'INTERFACE, pas
+   des seuils scientifiques. Elles ne se mélangent jamais à `T`, ne le lisent
+   pas, et sont NON CALIBRÉES : elles attendent des relevés de terrain au même
+   titre que `T`, mais elles se calibreront sur d'autres observations —
+   « trop d'annonces », « annonce trop tôt » — et non sur « rien vu ».
+   ═══════════════════════════════════════════════════════════ */
+
+/** Intervalle de silence sous lequel deux zones décrivent le même moment.
+    Choisi à cinq minutes après avoir rejoué des cas synthétiques : à trois
+    minutes, une route sinueuse produit encore trois cartes pour un seul
+    coucher de soleil ; à dix, deux phénomènes réellement distincts fusionnent
+    et la durée annoncée cesse d'être honnête. UX, non calibré. */
+const EPISODE_GAP_S = 300;
+
+/** Un changement de côté franc — gauche vers droite ou l'inverse — coupe
+    l'épisode : ce n'est plus le même geste pour le conducteur. Passer de face
+    à un côté, ou l'inverse, ne coupe pas : c'est le même soleil qui glisse. */
+function coteOppose(a, b) {
+  return (a === 'gauche' && b === 'droite') || (a === 'droite' && b === 'gauche');
+}
+
+function zoneUtilisable(z) {
+  return z && Number.isFinite(z.startD) && Number.isFinite(z.endD)
+    && Number.isFinite(z.startAt) && Number.isFinite(z.endAt)
+    && z.endD >= z.startD && z.endAt >= z.startAt
+    && RANK[z.level] !== undefined;
+}
+
+/** Regroupe les zones scientifiques en épisodes. Fonction pure : elle ne lit
+    que ses arguments, n'écrit nulle part, et rend toujours le même résultat
+    pour la même entrée. Aucune zone n'est perdue ni dupliquée. */
+function construireEpisodes(zones) {
+  const source = Array.isArray(zones) ? zones : [];
+  // On indexe AVANT de trier : sourceZoneIndexes doit désigner la position
+  // dans le tableau reçu, pas dans un ordre interne.
+  const utilisables = source
+    .map((z, i) => ({ z, i }))
+    .filter((x) => zoneUtilisable(x.z))
+    .sort((a, b) => a.z.startD - b.z.startD || a.z.startAt - b.z.startAt || a.i - b.i);
+
+  const groupes = [];
+  for (const x of utilisables) {
+    const g = groupes[groupes.length - 1];
+    if (!g) { groupes.push([x]); continue; }
+    const precedente = g[g.length - 1].z;
+    const silence = (x.z.startAt - precedente.endAt) / 1000;
+    const rupture = silence > EPISODE_GAP_S || coteOppose(precedente.side, x.z.side);
+    if (rupture) groupes.push([x]); else g.push(x);
+  }
+
+  return groupes.map((g, n) => {
+    const zs = g.map((x) => x.z);
+    const indexes = g.map((x) => x.i);
+    const premiere = zs[0], derniere = zs[zs.length - 1];
+
+    // Exposition RÉELLE : la somme des zones, pas l'étendue de l'épisode. Un
+    // épisode de dix-sept minutes dont huit sont exposées ne dure pas dix-sept
+    // minutes de soleil, et l'annoncer ainsi serait une invention.
+    const exposedSeconds = zs.reduce(
+      (a, z) => a + Math.max(0, Number.isFinite(z.seconds) ? z.seconds : 0), 0);
+    const exposedMeters = zs.reduce((a, z) => a + Math.max(0, z.endD - z.startD), 0);
+
+    const maxLevel = zs.reduce((m, z) => RANK[z.level] > RANK[m] ? z.level : m, 'none');
+
+    // Côté dominant : celui qui totalise le plus de temps exposé. À égalité
+    // parfaite, « face » l'emporte — c'est le cas où l'on veut le moins se
+    // tromper, et le seul que la phrase doit privilégier.
+    const parCote = { face: 0, gauche: 0, droite: 0 };
+    for (const z of zs) if (parCote[z.side] !== undefined) parCote[z.side] += Math.max(0, z.seconds || 0);
+    let dominantSide = 'face';
+    for (const c of ['face', 'gauche', 'droite']) if (parCote[c] > parCote[dominantSide]) dominantSide = c;
+
+    // Zone représentative : niveau le plus élevé, puis la plus frontale
+    // (|delta| le plus faible, une donnée déjà portée par la zone, pas un
+    // nouveau score), puis la plus longue, puis la plus ancienne.
+    let repr = g[0];
+    for (const x of g) {
+      const a = x.z, b = repr.z;
+      const meilleur = RANK[a.level] !== RANK[b.level] ? RANK[a.level] > RANK[b.level]
+        : Math.abs(a.delta) !== Math.abs(b.delta) ? Math.abs(a.delta) < Math.abs(b.delta)
+        : a.length !== b.length ? a.length > b.length
+        : a.startAt < b.startAt;
+      if (meilleur) repr = x;
+    }
+
+    return {
+      id: `EP-${String(n + 1).padStart(2, '0')}`,
+      sourceZoneIndexes: indexes,
+      sourceZoneCount: indexes.length,
+      startAt: premiere.startAt, endAt: derniere.endAt,
+      startD: premiere.startD, endD: derniere.endD,
+      durationMs: derniere.endAt - premiere.startAt,
+      lengthMeters: derniere.endD - premiere.startD,
+      exposedSeconds, exposedMeters,
+      maxLevel, dominantSide,
+      containsFace: zs.some((z) => z.side === 'face'),
+      representativeZoneIndex: repr.i,
+    };
+  });
+}
+
+/* ---- plan d'annonces ----
+   Cette couche ne parle pas. Elle décide quels épisodes MÉRITENT une annonce
+   et à quel moment la viser. La météo n'y entre jamais — aucun lien entre
+   nuages et gêne n'est calibré. Le relief non plus : « terrain bloqué donc
+   silence » resterait à valider sur la route. */
+
+/** Anticipation visée, par épisode. UX, non calibré. */
+const LEAD_HIGH_FACE_LONG_S = 300;   // soleil très bas dans l'axe, et ça dure
+const LEAD_HIGH_S = 180;             // soleil très bas
+const LEAD_MODERATE_S = 120;         // soleil bas dans le champ
+const LEAD_LONG_S = 300;             // au-delà, un épisode est « long »
+const LEAD_PLANCHER_UX_S = 60;       // sous lequel on ne descend pas volontairement
+
+function leadCibleSecondes(ep) {
+  let cible = ep.maxLevel === 'high'
+    ? (ep.dominantSide === 'face' && ep.exposedSeconds >= LEAD_LONG_S
+        ? LEAD_HIGH_FACE_LONG_S : LEAD_HIGH_S)
+    : LEAD_MODERATE_S;
+  // On ne prévient pas cinq minutes à l'avance pour quarante secondes de
+  // soleil : l'anticipation reste proportionnée à ce qui arrive.
+  cible = Math.min(cible, Math.max(LEAD_PLANCHER_UX_S, Math.round(ep.exposedSeconds * 2)));
+  return Math.max(MIN_LEAD_SECONDS, cible);
+}
+
+/** Ordre de priorité, lexicographique et lisible — jamais un score opaque. */
+function comparerEpisodes(a, b) {
+  if (RANK[a.maxLevel] !== RANK[b.maxLevel]) return RANK[b.maxLevel] - RANK[a.maxLevel];
+  const fa = a.dominantSide === 'face' ? 0 : 1, fb = b.dominantSide === 'face' ? 0 : 1;
+  if (fa !== fb) return fa - fb;
+  if (a.exposedSeconds !== b.exposedSeconds) return b.exposedSeconds - a.exposedSeconds;
+  return a.startAt - b.startAt;
+}
+
+/** Construit le plan. Rend la liste complète des épisodes annonçables avec,
+    pour chacun, s'il est retenu et POURQUOI — un épisode écarté ne disparaît
+    jamais en silence, c'est ce qui permet d'auditer pourquoi Radius parle. */
+function construirePlanAnnonces(episodes) {
+  const eligibles = (episodes || [])
+    .filter((e) => RANK[e.maxLevel] >= RANK.moderate)
+    .slice()
+    .sort(comparerEpisodes);
+
+  const retenus = [];
+  const entrees = [];
+  for (const e of eligibles) {
+    const targetLeadSeconds = leadCibleSecondes(e);
+    const plannedAt = e.startAt - targetLeadSeconds * 1000;
+    const priorityReason = `${e.maxLevel} · ${e.dominantSide}`
+      + ` · ${Math.round(e.exposedSeconds / 60)} min exposées`;
+    const base = { episodeId: e.id, targetLeadSeconds, plannedAt, priorityReason, spoken: false };
+
+    if (retenus.length >= MAX_ALERTS) {
+      entrees.push({ ...base, selected: false, rejet: 'plafond de quatre annonces' });
+      continue;
+    }
+    const conflit = retenus.find((r) => Math.abs(r.plannedAt - plannedAt) < COOLDOWN_MS);
+    if (conflit) {
+      entrees.push({ ...base, selected: false, rejet: `cooldown avec ${conflit.episodeId}` });
+      continue;
+    }
+    const entree = { ...base, selected: true, rejet: null };
+    retenus.push(entree); entrees.push(entree);
+  }
+  // Ordre chronologique pour la lecture ; la sélection, elle, s'est faite par
+  // priorité, et le journal montre les deux.
+  entrees.sort((a, b) => a.plannedAt - b.plannedAt);
+  return entrees;
+}
+
+/** Phrase d'une zone représentative d'épisode, au niveau 1. Descriptive :
+    une géométrie, jamais une gêne vécue. */
+function titreEpisode(ep) {
+  const cote = ep.dominantSide === 'gauche' ? 'la gauche' : 'la droite';
+  if (ep.dominantSide === 'face') {
+    return ep.maxLevel === 'high'
+      ? 'Soleil principalement en face, très bas'
+      : 'Soleil principalement en face';
+  }
+  return ep.maxLevel === 'high'
+    ? `Soleil très bas, surtout sur ${cote}`
+    : `Soleil surtout sur ${cote}`;
+}
+
+/* ═══════════════════════════════════════════════════════════
    6 ter. RENDU — trois niveaux de lecture
    Le moteur ne bouge pas d'une virgule ici : tout ce bloc LIT state.result
    et n'y écrit jamais. Niveau 1, ce qu'on comprend sans lire. Niveau 2,
