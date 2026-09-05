@@ -308,6 +308,86 @@ if (veut('R-004')) {
   }
 }
 
+/* ══════════════════ LOT 2 — P2 ══════════════════ */
+
+/* R-005 — un GPS refusé, en panne ou muet doit mener à un état FINI.
+   Avant correction : « En attente du premier point GPS… » indéfiniment, la
+   branche « position figée » étant inatteignable sans premier point. */
+if (veut('R-005')) {
+  console.log('\n== R-005 — échec du GPS : état fini ==');
+  const ctx2 = await nav.newContext({ timezoneId: 'Indian/Reunion', locale: 'fr-FR',
+    permissions: [] });                       // géolocalisation refusée
+  await ctx2.addInitScript((m) => {
+    const V = Date, dec = m - V.now();
+    const D = function (...a) { return a.length ? new V(...a) : new V(V.now() + dec); };
+    D.prototype = V.prototype; D.now = () => V.now() + dec; D.parse = V.parse; D.UTC = V.UTC;
+    window.Date = D;
+  }, MAINTENANT);
+  const p2 = await ctx2.newPage();
+  await p2.route('**://fonts.g*/**', (r) => r.abort());
+  await p2.route('**/nominatim.openstreetmap.org/**', (r) => {
+    const q = decodeURIComponent(new URL(r.request().url()).searchParams.get('q') || '');
+    const pt = /point a/i.test(q) ? A : B;
+    r.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify([{ display_name: pt.label, lat: String(pt.lat), lon: String(pt.lng) }]) });
+  });
+  await p2.goto(base + '/index.html');
+  for (const [champ, texte, liste] of [['from', 'Point A', 'sugFrom'], ['to', 'Point B', 'sugTo']]) {
+    await p2.fill('#' + champ, ''); await p2.type('#' + champ, texte, { delay: 8 });
+    await p2.waitForSelector('#' + liste + ' li'); await p2.click('#' + liste + ' li');
+  }
+  await p2.click('#maintenant');
+  await p2.click('#analyze');
+  await p2.waitForFunction(() => document.getElementById('bilanGrand').textContent.length > 0,
+    null, { timeout: 20000 });
+  await p2.click('#start');
+  await p2.waitForSelector('#tracking:not(.hide)', { timeout: 10000 });
+  await p2.waitForTimeout(3000);
+  const etat = await p2.evaluate(() => ({
+    titre: document.getElementById('suivTitre').textContent.trim(),
+    age: document.getElementById('lAge').textContent.trim(),
+    warn: document.getElementById('aliveWarn').classList.contains('hide')
+      ? '' : document.getElementById('aliveWarn').textContent.trim(),
+  }));
+  chk('R-005 l’échec de la position est dit en clair',
+    /Impossible d.{1,3}utiliser votre position/i.test(etat.titre + ' ' + etat.warn),
+    `« ${etat.titre} » · « ${etat.warn.slice(0, 70)} »`);
+  chk('R-005 l’écran ne reste pas sur « en attente »',
+    !/En attente du GPS/i.test(etat.titre));
+  chk('R-005 une issue est proposée',
+    /réessay|Tester sans GPS|Arrêter/i.test(etat.titre + ' ' + etat.warn + ' '
+      + (await p2.textContent('#stopTrack'))));
+  await ctx2.close();
+}
+
+/* R-006 — hier, aujourd'hui et demain ne doivent jamais être indiscernables,
+   et un trajet qui franchit minuit doit le dire. */
+if (veut('R-006')) {
+  console.log('\n== R-006 — la date est affichée ==');
+  const vus = [];
+  for (const [nom, d, h] of [['aujourd’hui', '2026-12-21', '17:56'],
+                             ['demain', '2026-12-22', '06:15'],
+                             ['dans trois jours', '2026-12-24', '06:15']]) {
+    await page.goto(base + '/index.html');
+    await choisir('from', 'Point A'); await choisir('to', 'Point B');
+    await page.fill('#date', d); await page.fill('#time', h);
+    await page.click('#analyze'); await attendreFin();
+    const meta = (await page.textContent('#trajetMeta')).trim();
+    vus.push(meta);
+    chk(`R-006 ${nom} — la date figure sur l’écran de résultat`,
+      /déc|janv|dim\.|lun\.|mar\.|mer\.|jeu\.|ven\.|sam\./i.test(meta), meta);
+  }
+  chk('R-006 les trois trajets sont discernables', new Set(vus).size === 3);
+
+  await page.goto(base + '/index.html');
+  await choisir('from', 'Point A'); await choisir('to', 'Point E');
+  await page.fill('#date', '2026-12-21'); await page.fill('#time', '23:40');
+  await page.click('#analyze'); await attendreFin();
+  const minuit = (await page.textContent('#trajetMeta')).trim();
+  chk('R-006 le franchissement de minuit est signalé',
+    /\+1|lendemain|22/.test(minuit), minuit);
+}
+
 console.log(`\n${ok} contrôle(s) PASS, ${ko} ÉCHEC.`);
 if (ko) console.log('Échecs : ' + echecs.join(' | '));
 await nav.close(); serveur.close();

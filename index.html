@@ -112,6 +112,7 @@ details>summary:focus-visible{outline:2px solid var(--sky);outline-offset:-2px}
   margin:0 0 4px;letter-spacing:-.01em}
 .trajet .meta{font-family:var(--mono);font-size:13px;color:var(--mute);
   font-variant-numeric:tabular-nums}
+.trajet .meta .jplus{color:var(--amber)}
 
 /* -- résumé humain : la réponse aux trois premières questions -- */
 .bilan{border:1px solid var(--edge);border-left-width:3px;border-radius:10px;
@@ -1102,6 +1103,7 @@ const state = { from: null, to: null, route: null, result: null, watch: null,
                 audio: null, wake: null, sim: null, swReg: null,
                 lastFixMs: 0, lastIdx: null, health: null, mode: null,
                 analyseEnCours: false, suivi: null, trajet: null, demarrage: null,
+                positionEchouee: false, suiviDepuisMs: 0,
                 relief: { requetes: 0, points: 0 },
                 meteo: { requetes: 0, zones: 0 } };
 
@@ -1237,6 +1239,7 @@ function arreterSuivi() {
   if (state.health) { clearInterval(state.health); state.health = null; }
   state.watch = null; state.lastIdx = null; state.lastFixMs = 0;
   state.mode = null; state.demarrage = null;
+  state.positionEchouee = false; state.suiviDepuisMs = 0;
   $('suiv').classList.remove('stale');
   $('aliveWarn').classList.add('hide');
   $('modeBanner').classList.add('hide');
@@ -1538,6 +1541,21 @@ function nomCourt(p) {
   return String(p.label || '').split(',')[0].trim() || '?';
 }
 
+/* Hier, aujourd'hui et demain s'affichaient à l'identique : « 06:15 → 06:32 »
+   ne disait pas quel jour, et un trajet franchissant minuit annonçait
+   « 23:40 → 00:21 », donc une arrivée avant le départ. La date est un
+   paramètre de première classe depuis le retour planifié ; elle se montre. */
+function fmtJour(ms) {
+  return new Date(ms).toLocaleDateString('fr-FR',
+    { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function memeJour(a, b) {
+  const x = new Date(a), y = new Date(b);
+  return x.getFullYear() === y.getFullYear() && x.getMonth() === y.getMonth()
+    && x.getDate() === y.getDate();
+}
+
 function fmtDuree(secondes) {
   const m = Math.max(1, Math.round(secondes / 60));
   return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}` : `${m} min`;
@@ -1742,8 +1760,10 @@ function render() {
   // ---- niveau 1 : le trajet ----
   const arrivee = r.departureMs + route.totalS * 1000;
   $('trajetTitre').textContent = `${nomCourt(state.from)} → ${nomCourt(state.to)}`;
-  $('trajetMeta').textContent = `${fmtTime(r.departureMs)} → ${fmtTime(arrivee)} · `
-    + `${fmtDuree(route.totalS)} · ${(route.totalM / 1000).toFixed(1).replace('.', ',')} km`;
+  const lendemain = memeJour(r.departureMs, arrivee) ? '' : ' <span class="jplus">+1 j</span>';
+  $('trajetMeta').innerHTML = `${fmtJour(r.departureMs)} · ${fmtTime(r.departureMs)} → `
+    + `${fmtTime(arrivee)}${lendemain} · ${fmtDuree(route.totalS)} · `
+    + `${(route.totalM / 1000).toFixed(1).replace('.', ',')} km`;
 
   // ---- niveau 1 : la réponse en une phrase ----
   // Le tri « important / faible » est une hiérarchie de lecture. Aucune zone
@@ -2151,6 +2171,20 @@ function renderLiveZones(along) {
   }
 }
 
+/** Fin de course explicite quand la position ne peut pas être obtenue. */
+function echecPosition(e) {
+  const pourquoi = e && e.code === 1 ? 'La position a été refusée pour cette page.'
+    : e && e.code === 3 ? 'Le téléphone n’a pas réussi à se localiser à temps.'
+    : 'La position est indisponible sur cet appareil.';
+  afficherSuivi({ etiq: 'Position', titre: 'Impossible d’utiliser votre position',
+    niveau: 'none', chiffres: [], progres: 0 });
+  $('lAge').textContent = pourquoi;
+  $('aliveWarn').textContent = pourquoi + ' Arrêtez le suivi pour revenir au '
+    + 'trajet, autorisez la position puis réessayez — ou utilisez « Tester sans GPS ».';
+  $('aliveWarn').classList.remove('hide');
+  state.positionEchouee = true;
+}
+
 /* ---- pannes visibles ----
    Trois défaillances étaient muettes : position figée, maintien en arrière-plan
    mort après un appel, date invalide. En phase de mesure une panne muette est
@@ -2161,9 +2195,16 @@ const STALE_MS = 30000;
 function refreshHealth() {
   const live = $('suiv'), age = $('lAge'), warn = $('aliveWarn');
 
+  if (state.positionEchouee) { live.classList.add('stale'); return; }
+
   if (!state.lastFixMs) {
     live.classList.add('stale');
-    age.textContent = 'En attente du premier point GPS…';
+    // L'attente initiale est bornée : au-delà, on dit depuis combien de temps
+    // rien n'arrive plutôt que de répéter « en attente » sans fin.
+    const attente = state.suiviDepuisMs ? Math.round((Date.now() - state.suiviDepuisMs) / 1000) : 0;
+    age.textContent = attente > 20
+      ? `Aucun point GPS reçu depuis ${attente} s — vérifiez que la position est autorisée.`
+      : 'En attente du premier point GPS…';
   } else {
     const s = Math.round((Date.now() - state.lastFixMs) / 1000);
     const perdu = s * 1000 > STALE_MS;
@@ -2310,9 +2351,18 @@ $('start').onclick = async () => {
       state.lastFixMs = Date.now();
       onPosition(p.coords.latitude, p.coords.longitude, p.coords.speed);
     },
-    (e) => log('GPS : ' + (e.message || 'position indisponible')),
+    (e) => {
+      // Sans cette branche, un refus de permission laissait l'écran sur
+      // « En attente du premier point GPS… » indéfiniment : la branche
+      // « position figée » de refreshHealth exige un premier point et
+      // n'était donc jamais atteinte. Une panne muette se note « rien
+      // annoncé, rien vu » et se compte pour un vrai négatif.
+      log('GPS : ' + (e.message || 'position indisponible'));
+      echecPosition(e);
+    },
     { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 },
   );
+  state.suiviDepuisMs = Date.now();
   state.health = setInterval(refreshHealth, 1000);
   refreshHealth();
 
