@@ -66,20 +66,37 @@
   <div class="card">
     <h2>Point fixe</h2>
     <p class="note">Pour tester RADIUS depuis une terrasse, un jardin ou un lieu de travail sans prendre la route.</p>
-    <div class="field" style="margin-top:14px">
+    <p class="note">L’heure d’observation est celle que tu choisis : le laboratoire
+      n’attend pas que l’heure arrive. La position du Soleil est calculable à
+      n’importe quelle date ; la météo, elle, dépend de ce qu’Open-Meteo sait fournir.</p>
+    <div class="row" style="margin-top:14px">
+      <div class="field"><label for="statDate">Date d’observation</label><input id="statDate" type="date"></div>
+      <div class="field"><label for="statTime">Heure de début</label><input id="statTime" type="time" step="60"></div>
+    </div>
+    <button class="btn secondary small" id="statMaintenant" style="margin:-4px 0 14px">Maintenant</button>
+    <div class="field">
       <label for="stationaryDuration">Horizon d’observation</label>
-      <select id="stationaryDuration"><option value="60">1 h</option><option value="120" selected>2 h</option><option value="240">4 h</option><option value="360">6 h</option></select>
+      <select id="stationaryDuration">
+        <option value="0">Instant précis</option>
+        <option value="30">30 min</option>
+        <option value="60">1 h</option>
+        <option value="120" selected>2 h</option>
+        <option value="240">4 h</option>
+        <option value="360">6 h</option>
+      </select>
     </div>
     <div class="stack">
-      <button class="btn" id="stationaryGps">Utiliser ma position et prévoir</button>
+      <button class="btn" id="prevoir">Prévoir à ce point</button>
       <button class="btn secondary" id="compassBtn">Activer la boussole</button>
     </div>
     <div id="stationaryStatus" class="status"></div>
     <p id="gpsQualite" class="note hidden"></p>
+    <p id="meteoFenetre" class="warn hidden"></p>
   </div>
 
   <div class="card hidden" id="liveCard">
     <h3>Orientation en direct</h3>
+    <p class="note">Cette carte décrit <b>l’instant présent</b>, jamais l’heure d’observation choisie plus haut.</p>
     <div class="compass">
       <div class="dial"><div class="needle" id="needle"></div></div>
       <div>
@@ -94,8 +111,11 @@
   </div>
 
   <div class="card hidden" id="stationaryForecast">
-    <h3>Prévision au point fixe</h3>
+    <h3 id="prevTitre">Prévision au point fixe</h3>
+    <p class="note" id="prevQuand"></p>
+    <div id="instantBloc" class="hidden"></div>
     <div class="timeline" id="stationaryTimeline"></div>
+    <p class="note" id="prevOrientation"></p>
     <p class="attrib">Weather data by Open-Meteo.com (CC BY 4.0)</p>
   </div>
 </section>
@@ -106,10 +126,11 @@
 <script type="module">
 import { routeSamples, stationarySamples, solar, sunRelativeLabel, compassHeadingFromEvent, signedDelta,
   fetchBorne, DELAI_ROUTE_MS, DELAI_METEO_MS, DELAI_GEOCODE_MS,
-  directionLisible, qualitePosition, PRECISION_TERRAIN_M } from './journey-core.mjs';
+  directionLisible, qualitePosition, PRECISION_TERRAIN_M,
+  echantillonsPointFixe, previsionDisponible, HORIZON_PREVISION_JOURS } from './journey-core.mjs';
 
 const $ = (id) => document.getElementById(id);
-const state = { originPoint:null, stationaryPoint:null, stationarySamples:null, stationaryWx:null, heading:null, compassAbsolute:false, compassStarted:false, compassSource:null, lastTimelineHeading:null };
+const state = { originPoint:null, stationaryPoint:null, stationarySamples:null, stationaryWx:null, heading:null, compassAbsolute:false, compassStarted:false, compassSource:null, statMaintenant:false, statHorizon:0, statDebutMs:NaN, lastTimelineHeading:null };
 const fmtTime = new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'});
 const fmtDate = new Intl.DateTimeFormat('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'});
 const fmtKm = (m) => `${(Number(m||0)/1000).toFixed(Number(m||0)>=10000?0:1)} km`;
@@ -119,7 +140,11 @@ const esc = (s) => String(s??'').replace(/[&<>'"]/g,(c)=>({'&':'&amp;','<':'&lt;
 function setStatus(el,text,kind=''){el.textContent=text;el.className=`status ${kind}`.trim();}
 function localInputDate(ms){const d=new Date(ms);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
 function localInputTime(ms){const d=new Date(ms);return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`}
-function initClock(){const t=Date.now()+15*60000;$('date').value=localInputDate(t);$('time').value=localInputTime(t)}
+function initClock(){const t=Date.now()+15*60000;$('date').value=localInputDate(t);$('time').value=localInputTime(t);statMaintenant()}
+/** Remplit date + heure du point fixe, et NE LANCE RIEN : « Maintenant » est un
+    raccourci de saisie, jamais une valeur imposée ni un calcul déclenché. */
+function statMaintenant(){const t=Date.now();$('statDate').value=localInputDate(t);$('statTime').value=localInputTime(t);state.statMaintenant=true}
+function lireDebutPointFixe(){const d=$('statDate').value,h=$('statTime').value;if(!d||!h)return NaN;return new Date(`${d}T${h}:00`).getTime()}
 
 function switchTab(which){const journey=which==='journey';$('journeyPanel').classList.toggle('hidden',!journey);$('stationaryPanel').classList.toggle('hidden',journey);$('tabJourney').classList.toggle('active',journey);$('tabStationary').classList.toggle('active',!journey)}
 $('tabJourney').onclick=()=>switchTab('journey');$('tabStationary').onclick=()=>switchTab('stationary');
@@ -192,24 +217,147 @@ $('calculate').onclick=async()=>{
   }catch(e){setStatus($('journeyStatus'),e?.message||String(e),'err')}finally{btn.disabled=false}
 };
 
-function renderStationaryTimeline(){if(!state.stationarySamples||!state.stationaryWx)return;$('stationaryTimeline').innerHTML=state.stationarySamples.map((s,i)=>pointHtml(s,state.stationaryWx[i],state.heading)).join('');state.lastTimelineHeading=state.heading}
-async function planStationary(){setStatus($('stationaryStatus'),'Position en cours…');try{const p=await gps();state.stationaryPoint=p;const mins=Number($('stationaryDuration').value)||120;const start=Date.now();const samples=stationarySamples(p,start,start+mins*60000,Math.min(6,Math.max(3,Math.ceil(mins/60)+2)));setStatus($('stationaryStatus'),'Prévision du point fixe…');
-  let resultats=null,meteoErreur=null;
-  try{resultats=(await weather(samples)).resultats}catch(e){meteoErreur=e?.message||String(e)}
-  if(!Array.isArray(resultats)||resultats.length!==samples.length){resultats=samples.map(()=>null)}
-  state.stationarySamples=samples;state.stationaryWx=resultats;renderStationaryTimeline();
-  $('stationaryForecast').classList.remove('hidden');$('liveCard').classList.remove('hidden');updateLiveSun();
-  // La précision n'est jamais masquée, et une position trop floue ne bloque
-  // rien : c'est en marchant qu'on découvre que le GPS dérive. On le dit.
-  const q=qualitePosition(p.accuracy);
-  $('gpsQualite').textContent=q.texte;
-  $('gpsQualite').className=q.fiable?'note':'warn';
-  $('gpsQualite').classList.remove('hidden');
-  setStatus($('stationaryStatus'),meteoErreur
-    ?`Point fixé sans la météo — ${meteoErreur} La course du Soleil reste calculée.`
-    :`Point fixé · ${q.texte}`,
-    meteoErreur||!q.fiable?'err':'ok')}catch(e){setStatus($('stationaryStatus'),e.message,'err')}}
-$('stationaryGps').onclick=planStationary;
+/* ---- rendu du point fixe ----
+   L'orientation du téléphone est INDÉPENDANTE de l'heure choisie : la boussole
+   décrit où pointe le haut de l'appareil MAINTENANT. Quand elle est active, on
+   s'en sert pour dire où serait le Soleil par rapport à cette direction à
+   chaque instant simulé. Ce n'est jamais le cap d'une voiture — sur route,
+   c'est la géométrie de la route qui fait foi, pas le téléphone. */
+function renderStationaryTimeline(){
+  if(!state.stationarySamples||!state.stationaryWx)return;
+  const wx=state.stationaryWx;
+  if(state.statHorizon===0){
+    $('instantBloc').innerHTML=carteInstant(state.stationarySamples[0],wx[0]);
+    $('instantBloc').classList.remove('hidden');
+    $('stationaryTimeline').innerHTML='';
+  }else{
+    $('instantBloc').classList.add('hidden');$('instantBloc').innerHTML='';
+    $('stationaryTimeline').innerHTML=state.stationarySamples
+      .map((s,i)=>pointHtml(s,wx[i],state.heading)).join('');
+  }
+  $('prevOrientation').textContent=Number.isFinite(state.heading)
+    ?`Position du Soleil donnée par rapport à ${directionLisible(state.heading)} — la direction vers laquelle pointe le haut du téléphone en ce moment, pas celle d’un véhicule.`
+    :'Active la boussole pour situer le Soleil par rapport à la direction que tu regardes.';
+  state.lastTimelineHeading=state.heading;
+}
+
+/** « Instant précis » : tout ce que RADIUS sait de cet instant-là, en clair.
+    Les grandeurs météo sont montrées, jamais interprétées — aucun seuil. */
+function carteInstant(sample,w){
+  const sun=solar(sample.passageTimeMs,sample.lat,sample.lng);
+  const d=new Date(sample.passageTimeMs);
+  const l=[];
+  const ligne=(k,v)=>l.push(`<div class="point"><div class="time">${esc(k)}</div><div><p>${v}</p></div></div>`);
+  ligne('Heure',`<b>${fmtDate.format(d)} · ${fmtTime.format(d)}</b>`);
+  // Astronomie : valable à n'importe quelle date, indépendamment de la météo.
+  ligne('Soleil',`<b>${esc(sunRelativeLabel(null,sun))}</b><br>`
+    +`élévation ${sun.elevation.toFixed(1)}° · azimut ${sun.azimuth.toFixed(0)}° (${esc(cardinalDe(sun.azimuth))})`);
+  if(Number.isFinite(state.heading)){
+    ligne('Vu d’ici',`<b>${esc(sunRelativeLabel(state.heading,sun))}</b><br>`
+      +`par rapport à ${esc(directionLisible(state.heading))}, direction du haut du téléphone`);
+  }else{
+    ligne('Vu d’ici','Boussole non activée — aucune direction de référence.');
+  }
+  if(!w||w.status==='unknown'){
+    ligne('Météo',`<b>${esc(w&&w.indisponible?w.indisponible:'Prévision indisponible')}</b>`
+      +(w&&Array.isArray(w.warnings)&&w.warnings.length?`<br>${esc(w.warnings[0])}`:''));
+  }else{
+    const n=(v,u,dec=0)=>Number.isFinite(v)?`${v.toFixed(dec)} ${u}`:'—';
+    ligne('Ciel',`<b>${esc(weatherCodeText(w.weatherCode))}</b>`
+      +` · code WMO ${Number.isFinite(w.weatherCode)?w.weatherCode:'—'}`);
+    ligne('Air',`Température ${n(w.temperature,'°C',1)} · Nuages ${n(w.cloudCover,'%')}`
+      +`<br>Pluie ${n(w.precipitation,'mm sur 1 h',1)} · Visibilité ${Number.isFinite(w.visibility)?(w.visibility/1000).toFixed(1)+' km':'—'}`);
+    // La direction du vent est celle d'OÙ IL VIENT, convention météo.
+    ligne('Vent',`${n(w.windSpeed,'km/h')} · rafales ${n(w.windGusts,'km/h')}`
+      +`<br>de ${Number.isFinite(w.windDirection)?esc(directionLisible(w.windDirection)):'—'}`);
+    ligne('Rayonnement',`DNI ${n(w.directNormalIrradiance,'W/m²')}`
+      +'<br><span class="metrics">Grandeur brute, issue d’un modèle. Aucun seuil, aucune conclusion.</span>');
+    ligne('Validité',`Échéance ${esc(String(w.instantValidTime||'—'))}`
+      +(Number.isFinite(w.deltaTimeMinutes)?` · écart ${w.deltaTimeMinutes} min avec l’heure demandée`:'')
+      +`<br>Source ${esc(String(w.provider||'—'))}, relevé ${esc(String(w.fetchedAt||'—'))}`);
+  }
+  return `<div class="timeline">${l.join('')}</div>`;
+}
+const cardinalDe=(deg)=>directionLisible(deg).split(' · ')[0];
+
+async function planStationary(){
+  const bouton=$('prevoir');bouton.disabled=true;
+  $('meteoFenetre').classList.add('hidden');
+  try{
+    // L'heure vient du formulaire, JAMAIS de Date.now() — sauf si « Maintenant »
+    // vient d'être pressé, ce qui a rempli les champs : c'est encore le
+    // formulaire qui fait foi.
+    const debut=lireDebutPointFixe();
+    if(!Number.isFinite(debut))throw new Error('Date ou heure d’observation incomplète.');
+    const horizon=Number($('stationaryDuration').value)||0;
+    state.statDebutMs=debut;state.statHorizon=horizon;
+
+    setStatus($('stationaryStatus'),'Position en cours…');
+    const p=await gps();state.stationaryPoint=p;
+    const q=qualitePosition(p.accuracy);
+    $('gpsQualite').textContent=q.texte;
+    $('gpsQualite').className=q.fiable?'note':'warn';
+    $('gpsQualite').classList.remove('hidden');
+
+    const samples=echantillonsPointFixe(p,debut,horizon);
+    if(!samples.length)throw new Error('Impossible d’échantillonner ce point.');
+
+    // On n'envoie à Open-Meteo QUE les instants qu'il peut servir. Une prévision
+    // d'aujourd'hui présentée pour le 21 décembre serait un relevé faux ; et une
+    // requête pour une date qu'il ne couvre pas est une requête pour rien.
+    const verdicts=samples.map((x)=>previsionDisponible(x.passageTimeMs));
+    const servables=samples.filter((x,i)=>verdicts[i].disponible);
+    const resultats=new Array(samples.length).fill(null);
+    let meteoErreur=null;
+    if(servables.length){
+      setStatus($('stationaryStatus'),'Prévision du point fixe…');
+      let recus=null;
+      try{recus=(await weather(servables)).resultats}catch(e){meteoErreur=e?.message||String(e)}
+      if(Array.isArray(recus)&&recus.length===servables.length){
+        let k=0;samples.forEach((x,i)=>{if(verdicts[i].disponible)resultats[i]=recus[k++]});
+      }else if(!meteoErreur&&recus){meteoErreur=`${recus.length} résultat(s) pour ${servables.length} instant(s).`}
+    }
+    samples.forEach((x,i)=>{
+      if(verdicts[i].disponible)return;
+      resultats[i]={status:'unknown',provider:'open-meteo',
+        indisponible:'Prévision indisponible pour cette date',
+        warnings:[texteFenetre(verdicts[i])]};
+    });
+    if(servables.length<samples.length){
+      $('meteoFenetre').textContent=`Prévision indisponible pour cette date — ${texteFenetre(verdicts.find((v)=>!v.disponible))} `
+        +'La position du Soleil, elle, reste calculée : c’est de l’astronomie, pas une prévision.';
+      $('meteoFenetre').classList.remove('hidden');
+    }
+
+    state.stationarySamples=samples;state.stationaryWx=resultats;
+    $('prevTitre').textContent=horizon===0?'Instant précis au point fixe':'Prévision au point fixe';
+    const fin=new Date(debut+horizon*60000);
+    $('prevQuand').textContent=horizon===0
+      ?`${fmtDate.format(new Date(debut))} · ${fmtTime.format(new Date(debut))}`
+      :`${fmtDate.format(new Date(debut))} · ${fmtTime.format(new Date(debut))} → ${fmtTime.format(fin)} (${fmtDur(horizon*60)})`;
+    renderStationaryTimeline();
+    $('stationaryForecast').classList.remove('hidden');
+    $('liveCard').classList.remove('hidden');
+    updateLiveSun();
+    setStatus($('stationaryStatus'),meteoErreur
+      ?`Point analysé sans la météo — ${meteoErreur} La course du Soleil reste calculée.`
+      :`Point analysé · ${q.texte}`,
+      (meteoErreur||!q.fiable)?'err':'ok');
+  }catch(e){setStatus($('stationaryStatus'),e?.message||String(e),'err')}
+  finally{bouton.disabled=false}
+}
+function texteFenetre(v){
+  if(!v)return '';
+  if(v.raison==='invalide')return 'Heure d’observation illisible.';
+  const d1=new Date(v.fenetre.debutMs),d2=new Date(v.fenetre.finMs-3600000);
+  const bornes=`Open-Meteo ne couvre que du ${fmtDate.format(d1)} au ${fmtDate.format(d2)}`
+    +` (${HORIZON_PREVISION_JOURS} jours).`;
+  return v.raison==='avant'?`Cette date est passée. ${bornes}`:`Cette date est trop lointaine. ${bornes}`;
+}
+$('prevoir').onclick=planStationary;
+$('statMaintenant').onclick=statMaintenant;
+$('statDate').addEventListener('input',()=>{state.statMaintenant=false});
+$('statTime').addEventListener('input',()=>{state.statMaintenant=false});
 
 /* Niveau 1 : des mots. Niveau 3 : les chiffres, sous « Détails techniques ».
    Rien ne disparaît — la phase reste une phase de mesure, et un relevé

@@ -312,3 +312,57 @@ export async function fetchBorne(url, options, delaiMs, quoi, fetchImpl) {
     clearTimeout(minuteur);
   }
 }
+
+/* ---- ce qu'Open-Meteo peut réellement fournir ----
+   `api/journey-weather.js` interroge `forecast_days=N` en `timezone=UTC`, avec
+   N plafonné à 7. Open-Meteo renvoie alors les heures d'aujourd'hui 00:00 UTC
+   à (aujourd'hui + N − 1) 23:00 UTC. La fenêtre réellement servable est donc
+   [minuit UTC du jour, minuit UTC + 7 jours[.
+
+   Hors de cette fenêtre, l'échéance la plus proche que renverrait Open-Meteo
+   serait celle d'un AUTRE jour. Le garde des 90 minutes la marquerait
+   « unknown », mais la requête serait partie pour rien — et surtout, une
+   prévision d'aujourd'hui présentée pour le 21 décembre serait un relevé faux.
+   On ne l'envoie donc pas, et on le dit.
+
+   La position du Soleil, elle, reste calculable à n'importe quelle date : c'est
+   de l'astronomie, pas une prévision. Elle continue de s'afficher. */
+export const HORIZON_PREVISION_JOURS = 7;
+
+export function fenetrePrevision(nowMs) {
+  const n = Number.isFinite(Number(nowMs)) ? Number(nowMs) : Date.now();
+  const d = new Date(n);
+  const debutMs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  return { debutMs, finMs: debutMs + HORIZON_PREVISION_JOURS * 86400000 };
+}
+
+/** `raison` vaut 'avant', 'apres', 'invalide' — ou null quand c'est servable. */
+export function previsionDisponible(instantMs, nowMs) {
+  const fenetre = fenetrePrevision(nowMs);
+  const t = Number(instantMs);
+  if (!Number.isFinite(t)) return { disponible: false, raison: 'invalide', fenetre };
+  if (t < fenetre.debutMs) return { disponible: false, raison: 'avant', fenetre };
+  if (t >= fenetre.finMs) return { disponible: false, raison: 'apres', fenetre };
+  return { disponible: true, raison: null, fenetre };
+}
+
+/* ---- échantillonnage d'un point fixe ----
+   « Instant précis » n'est pas un horizon de zéro minute échantillonné deux
+   fois : c'est UN instant, et deux lignes identiques laisseraient croire à une
+   évolution. D'où un tableau d'un seul élément. */
+export function nombreEchantillons(horizonMinutes) {
+  const m = Math.max(0, Number(horizonMinutes) || 0);
+  if (m === 0) return 1;
+  return Math.max(3, Math.min(7, Math.ceil(m / 60) + 2));
+}
+
+export function echantillonsPointFixe(point, debutMs, horizonMinutes) {
+  const debut = Number(debutMs);
+  if (!point || !Number.isFinite(Number(point.lat)) || !Number.isFinite(Number(point.lng))
+    || !Number.isFinite(debut)) return [];
+  const m = Math.max(0, Number(horizonMinutes) || 0);
+  if (m === 0) {
+    return [{ lat: Number(point.lat), lng: Number(point.lng), progress: 0, passageTimeMs: debut }];
+  }
+  return stationarySamples(point, debut, debut + m * 60000, nombreEchantillons(m));
+}

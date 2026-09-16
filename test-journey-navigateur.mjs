@@ -233,33 +233,129 @@ chk('le bouton n’est pas resté figé',
 chk('aucun résultat trompeur n’est affiché',
   await page.evaluate(() => document.getElementById('journeyResult').classList.contains('hidden')));
 
-console.log('\n== Point fixe · GPS net ==');
+console.log('\n== Point fixe · l’heure est celle qu’on choisit ==');
 await page.goto(base + '/journey.html');
 await page.evaluate(() => { window.__precisionGps = 12; });
 await page.click('#tabStationary');
-chk('l’onglet point fixe s’ouvre', await page.isVisible('#stationaryGps'));
-await page.selectOption('#stationaryDuration', '240');
-await page.click('#stationaryGps');
+chk('l’onglet point fixe s’ouvre', await page.isVisible('#prevoir'));
+chk('date et heure d’observation sont pré-remplies sur maintenant',
+  (await page.inputValue('#statDate')) === '2026-12-21'
+  && (await page.inputValue('#statTime')) === '15:40',
+  `${await page.inputValue('#statDate')} ${await page.inputValue('#statTime')}`);
+chk('les six horizons sont proposés',
+  (await page.$$eval('#stationaryDuration option', (n) => n.map((x) => x.textContent.trim())))
+    .join(' | ') === 'Instant précis | 30 min | 1 h | 2 h | 4 h | 6 h',
+  (await page.$$eval('#stationaryDuration option', (n) => n.map((x) => x.textContent.trim()))).join(' | '));
+
+// « Maintenant » remplit et ne lance rien.
+await page.fill('#statDate', '2026-12-23'); await page.fill('#statTime', '06:00');
+const appelsAvant = journal.length;
+await page.click('#statMaintenant');
+await page.waitForTimeout(600);
+chk('« Maintenant » remplit date et heure',
+  (await page.inputValue('#statDate')) === '2026-12-21'
+  && (await page.inputValue('#statTime')) === '15:40',
+  `${await page.inputValue('#statDate')} ${await page.inputValue('#statTime')}`);
+chk('« Maintenant » ne lance aucun calcul',
+  journal.length === appelsAvant && !(await page.isVisible('#stationaryForecast')),
+  `${journal.length - appelsAvant} requête(s)`);
+
+// Une heure choisie, différente de maintenant, dans la fenêtre de prévision.
+await page.fill('#statDate', '2026-12-23'); await page.fill('#statTime', '06:00');
+await page.selectOption('#stationaryDuration', '120');
+await page.click('#prevoir');
 await page.waitForSelector('#stationaryForecast:not(.hidden)', { timeout: 30000 }).catch(() => {});
-chk('la prévision du point fixe s’affiche',
-  await page.isVisible('#stationaryForecast'), await page.textContent('#stationaryStatus'));
-const pts = await page.$$eval('#stationaryTimeline .point .time', (n) => n.map((x) => x.textContent.trim()));
-chk('la course du Soleil est échantillonnée dans le temps', pts.length >= 3, pts.join(' '));
-chk('sans boussole, aucun cap n’est inventé',
-  !(await page.$$eval('#stationaryTimeline .point .sun', (n) => n.map((x) => x.textContent)))
-    .some((t) => /cap \d+°/.test(t)));
-chk('une position nette affiche sa précision sans alarme',
-  /12 m/.test(await page.textContent('#gpsQualite'))
-  && !/trop imprécise/.test(await page.textContent('#gpsQualite')),
-  await page.textContent('#gpsQualite'));
-chk('le point fixe fonctionne sans capteur d’orientation', erreursJS.length === 0,
-  erreursJS.slice(0, 2).join(' | '));
+const demandes = journal.filter((j) => j.chemin === '/api/journey-weather').at(-1);
+chk('la météo est demandée à l’heure CHOISIE, pas à maintenant',
+  demandes && new Date(demandes.corps.observations[0].passageTimeMs).toISOString()
+    === '2026-12-23T02:00:00.000Z',
+  demandes ? new Date(demandes.corps.observations[0].passageTimeMs).toISOString() : '(aucune)');
+chk('la période analysée est affichée',
+  /06:00 → 08:00/.test(await page.textContent('#prevQuand')),
+  await page.textContent('#prevQuand'));
+const heuresT = await page.$$eval('#stationaryTimeline .point .time', (n) => n.map((x) => x.textContent.trim()));
+chk('une timeline couvre début → fin', heuresT.join(' ') === '06:00 06:40 07:20 08:00', heuresT.join(' '));
+chk('aucun bandeau d’indisponibilité sur une date servable',
+  !(await page.isVisible('#meteoFenetre')));
+
+console.log('\n== Point fixe · Instant précis ==');
+await page.selectOption('#stationaryDuration', '0');
+await page.fill('#statDate', '2026-12-22'); await page.fill('#statTime', '17:45');
+await page.click('#prevoir');
+await page.waitForSelector('#instantBloc:not(.hidden)', { timeout: 30000 }).catch(() => {});
+const env = journal.filter((j) => j.chemin === '/api/journey-weather').at(-1);
+chk('un seul instant est demandé', env && env.corps.observations.length === 1,
+  env ? `${env.corps.observations.length} observation(s)` : '(aucune)');
+chk('le titre dit qu’il s’agit d’un instant',
+  /Instant précis/.test(await page.textContent('#prevTitre')),
+  await page.textContent('#prevTitre'));
+chk('aucune timeline n’est affichée pour un instant',
+  (await page.$$eval('#stationaryTimeline .point', (n) => n.length)) === 0);
+const inst = (await page.textContent('#instantBloc')).replace(/\s+/g, ' ');
+for (const [nom, motif] of [
+  ['heure analysée', /17:45/],
+  ['élévation du Soleil', /élévation -?\d+\.\d+°/],
+  ['azimut du Soleil', /azimut \d+°/],
+  ['température', /26\.4 °C/],
+  ['nuages', /Nuages 40 %/],
+  ['pluie', /Pluie 0\.0 mm sur 1 h/],
+  ['visibilité', /Visibilité 24\.0 km/],
+  ['vent', /18 km\/h/],
+  ['rafales', /rafales 42 km\/h/],
+  ['direction du vent', /de Sud-Est · 115°/],
+  ['DNI', /DNI 640 W\/m²/],
+  ['code météo', /code WMO 1/],
+  ['heure de validité', /Échéance 2026-12-22T/],
+  ['provenance', /Source open-meteo/],
+]) chk(`instant précis — ${nom}`, motif.test(inst), (inst.match(motif) || ['(absent)'])[0]);
+chk('instant précis — aucune conclusion sur une gêne',
+  !/éblou|gên|dangereu/i.test(inst));
+chk('instant précis — le DNI est annoncé comme brut, sans seuil',
+  /Aucun seuil, aucune conclusion/.test(inst));
+chk('sans boussole, aucune direction de référence n’est inventée',
+  /Boussole non activée/.test(inst), (inst.match(/Vu d’ici[^·]*/) || ['(absent)'])[0]);
+
+console.log('\n== Point fixe · date hors fenêtre de prévision ==');
+const requetesAvant = journal.filter((j) => j.chemin === '/api/journey-weather').length;
+await page.fill('#statDate', '2027-06-15'); await page.fill('#statTime', '17:30');
+await page.selectOption('#stationaryDuration', '0');
+await page.click('#prevoir');
+await page.waitForSelector('#meteoFenetre:not(.hidden)', { timeout: 30000 }).catch(() => {});
+chk('la phrase demandée est affichée',
+  /Prévision indisponible pour cette date/.test(await page.textContent('#meteoFenetre')),
+  (await page.textContent('#meteoFenetre')).slice(0, 80));
+chk('aucune requête n’est envoyée pour une date non couverte',
+  journal.filter((j) => j.chemin === '/api/journey-weather').length === requetesAvant,
+  `${journal.filter((j) => j.chemin === '/api/journey-weather').length - requetesAvant} requête(s)`);
+chk('maintenant n’est jamais substitué en silence',
+  /17:30/.test(await page.textContent('#instantBloc'))
+  && !/15:40/.test(await page.textContent('#instantBloc')),
+  (await page.textContent('#prevQuand')).trim());
+chk('le Soleil reste calculé : c’est de l’astronomie, pas une prévision',
+  /élévation -?\d+\.\d+°/.test(await page.textContent('#instantBloc')),
+  ((await page.textContent('#instantBloc')).match(/élévation[^·]*/) || ['(absent)'])[0]);
+chk('la météo de cet instant est dite indisponible, pas inventée',
+  /Prévision indisponible/.test(await page.textContent('#instantBloc'))
+  && !/26\.4 °C/.test(await page.textContent('#instantBloc')));
+
+console.log('\n== Point fixe · date passée ==');
+const avantPasse = journal.filter((j) => j.chemin === '/api/journey-weather').length;
+await page.fill('#statDate', '2026-12-19'); await page.fill('#statTime', '17:30');
+await page.click('#prevoir');
+await page.waitForSelector('#meteoFenetre:not(.hidden)', { timeout: 30000 }).catch(() => {});
+chk('une date passée est refusée par la même règle',
+  /Prévision indisponible pour cette date/.test(await page.textContent('#meteoFenetre'))
+  && /passée/.test(await page.textContent('#meteoFenetre')),
+  (await page.textContent('#meteoFenetre')).slice(0, 90));
+chk('et n’est pas envoyée non plus',
+  journal.filter((j) => j.chemin === '/api/journey-weather').length === avantPasse);
 
 console.log('\n== Point fixe · GPS imprécis (le cas relevé sur le A55) ==');
 await page.goto(base + '/journey.html');
 await page.evaluate(() => { window.__precisionGps = 2000; });
 await page.click('#tabStationary');
-await page.click('#stationaryGps');
+await page.selectOption('#stationaryDuration', '120');
+await page.click('#prevoir');
 await page.waitForSelector('#stationaryForecast:not(.hidden)', { timeout: 30000 }).catch(() => {});
 const qualite = await page.textContent('#gpsQualite');
 chk('la précision n’est pas masquée', /2000 m/.test(qualite), qualite);
@@ -272,6 +368,8 @@ chk('le prototype fonctionne quand même',
   await page.isVisible('#stationaryForecast')
   && (await page.$$eval('#stationaryTimeline .point', (n) => n.length)) >= 3,
   `${await page.$$eval('#stationaryTimeline .point', (n) => n.length)} instants`);
+chk('le point fixe fonctionne sans capteur d’orientation', erreursJS.length === 0,
+  erreursJS.slice(0, 2).join(' | '));
 
 console.log('\n== Boussole · un écran humain ==');
 await page.click('#compassBtn');
@@ -324,7 +422,7 @@ chk('le niveau 3 rappelle que la boussole ne fait pas le cap routier',
 await page.goto(base + '/journey.html');
 await page.evaluate(() => { window.__precisionGps = 12; });
 await page.click('#tabStationary');
-await page.click('#stationaryGps');
+await page.click('#prevoir');
 await page.waitForSelector('#liveCard:not(.hidden)', { timeout: 30000 }).catch(() => {});
 await page.click('#compassBtn');
 await envoyer(90, false, 'deviceorientation');
@@ -352,7 +450,7 @@ await nuit.addInitScript((m) => {
 }, new Date('2026-12-21T23:00:00+04:00').getTime());
 await nuit.goto(base + '/journey.html');
 await nuit.click('#tabStationary');
-await nuit.click('#stationaryGps');
+await nuit.click('#prevoir');
 await nuit.waitForSelector('#liveCard:not(.hidden)', { timeout: 30000 }).catch(() => {});
 await nuit.click('#compassBtn');
 await nuit.evaluate(() => {

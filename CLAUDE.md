@@ -400,6 +400,41 @@ chiffre et **sans empêcher le prototype de tourner**, puisque c'est justement e
 marchant qu'on découvre que le GPS dérive. Ce seuil qualifie une **donnée**, pas
 le ciel : il ne lit pas `T` et ne s'y mélange jamais.
 
+**Le point fixe s'observe à l'heure qu'on choisit.** Décision du 16 septembre
+2026 : le laboratoire de terrain ne peut pas attendre physiquement que l'heure
+arrive. Date d'observation, heure de début et horizon — **Instant précis**,
+30 min, 1 h, 2 h, 4 h, 6 h — sont saisis ; le calcul part de l'heure **saisie**,
+jamais de `Date.now()`. « Maintenant » remplit les deux champs et **ne lance
+rien** : c'est un raccourci de saisie, comme pour le retour planifié, jamais une
+valeur imposée.
+
+« Instant précis » est **un** instant, pas un horizon nul échantillonné deux
+fois : deux lignes identiques laisseraient croire à une évolution. Il affiche
+l'heure analysée, la géométrie solaire, la relation au téléphone si la boussole
+tourne, puis température, nuages, pluie, visibilité, vent, rafales, direction du
+vent, DNI, code WMO, heure de validité et provenance — **montrés, jamais
+interprétés**. Au-delà de zéro, une timeline couvre début → fin.
+
+**Une date que la prévision ne couvre pas n'est jamais envoyée.**
+`api/journey-weather.js` interroge `forecast_days` plafonné à 7 en
+`timezone=UTC` : la fenêtre réellement servable est
+`[minuit UTC du jour, minuit UTC + 7 jours[`, et `fenetrePrevision()` la calcule.
+Hors de là, l'échéance la plus proche qu'Open-Meteo renverrait serait celle d'un
+**autre jour** — une prévision d'aujourd'hui présentée pour le 21 décembre
+serait un relevé faux. RADIUS n'émet donc pas la requête et affiche
+**« Prévision indisponible pour cette date »**, avec les bornes. Jamais de
+substitution silencieuse par « maintenant ».
+
+**La position du Soleil, elle, reste calculée à n'importe quelle date** : c'est
+de l'astronomie, pas une prévision. Une date hors fenêtre météo garde donc sa
+géométrie solaire complète.
+
+**La boussole est indépendante de l'heure choisie.** Elle décrit l'orientation
+du téléphone **maintenant**, et la carte « Orientation en direct » le dit. Quand
+elle est active, cette direction sert à situer le Soleil à chaque instant simulé
+— toujours annoncée comme celle du **haut du téléphone**, jamais celle d'un
+véhicule.
+
 **Les règles figées s'appliquent aussi à cette branche.** `journey.html` n'a
 aucun `fetch()` nu : les trois appels passent par `fetchBorne()`. La météo y est
 passive au sens fort — sa panne dégrade son propre statut, dit pourquoi, et
@@ -420,9 +455,10 @@ par l'environnement Production et n'a jamais été étendue à Preview. Ne jamai
 créer une seconde clé ni écrire la clé dans le dépôt pour contourner cela.
 
 Bancs : `test-journey-v02.mjs` (fonctions pures, accord solaire, échéances,
-directions cardinales, qualité GPS) et `test-journey-navigateur.mjs`
-(53 contrôles Playwright sur la page réelle, dont le GPS à 2 km et le Soleil
-couché).
+directions cardinales, qualité GPS, fenêtre de prévision, échantillonnage du
+point fixe) et `test-journey-navigateur.mjs` (84 contrôles Playwright sur la
+page réelle, dont le GPS à 2 km, le Soleil couché, l'instant précis champ par
+champ, et les dates passées ou trop lointaines qui ne partent jamais à l'API).
 
 ## La règle de parole
 

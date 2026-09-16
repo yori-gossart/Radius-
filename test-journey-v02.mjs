@@ -3,6 +3,8 @@ import {
   bearing, signedDelta, solar, routeSamples, stationarySamples,
   sunRelativeLabel, compassHeadingFromEvent, fetchBorne,
   cardinal, directionLisible, qualitePosition, PRECISION_TERRAIN_M,
+  fenetrePrevision, previsionDisponible, nombreEchantillons, echantillonsPointFixe,
+  HORIZON_PREVISION_JOURS,
 } from './journey-core.mjs';
 
 const near = (a,b,t=1e-6) => Math.abs(a-b) <= t;
@@ -227,6 +229,139 @@ assert.ok(!/level|score|high|moderate/i.test(JSON.stringify([flou, net, inconnu]
   assert.ok(/qualitePosition\(/.test(j), 'la précision GPS est qualifiée');
   assert.ok(/pas un vrai nord magnétique/.test(j),
     'une orientation relative n’est jamais présentée comme un nord magnétique');
+}
+
+/* ── Point fixe à l'heure choisie (16 septembre 2026) ── */
+
+// La fenêtre est celle qu'`api/journey-weather.js` peut RÉELLEMENT servir :
+// forecast_days plafonné à 7, en timezone=UTC, donc de minuit UTC du jour à
+// minuit UTC + 7 jours.
+{
+  const maintenant = Date.UTC(2026, 8, 16, 13, 0);
+  const f = fenetrePrevision(maintenant);
+  assert.equal(new Date(f.debutMs).toISOString(), '2026-09-16T00:00:00.000Z',
+    'la fenêtre commence à minuit UTC du jour');
+  assert.equal(f.finMs - f.debutMs, HORIZON_PREVISION_JOURS * 86400000,
+    'elle dure exactement l’horizon annoncé');
+  assert.equal(HORIZON_PREVISION_JOURS, 7);
+
+  const cas = [
+    ['la veille au soir', Date.UTC(2026, 8, 15, 23, 0), 'avant'],
+    ['une heure passée du jour même', Date.UTC(2026, 8, 16, 2, 0), null],
+    ['l’instant présent', maintenant, null],
+    ['dans six jours', Date.UTC(2026, 8, 22, 22, 0), null],
+    ['dernière heure servable', f.finMs - 3600000, null],
+    ['le jour de trop', Date.UTC(2026, 8, 23, 1, 0), 'apres'],
+    ['le 21 décembre', Date.UTC(2026, 11, 21, 14, 30), 'apres'],
+    ['heure illisible', NaN, 'invalide'],
+  ];
+  for (const [nom, t, attendu] of cas) {
+    const v = previsionDisponible(t, maintenant);
+    assert.equal(v.raison, attendu, `fenêtre de prévision — ${nom}`);
+    assert.equal(v.disponible, attendu === null, `disponibilité — ${nom}`);
+  }
+  // Une date hors fenêtre n'est jamais remplacée par « maintenant » en silence :
+  // la fonction dit non, et c'est à l'appelant de ne pas envoyer la requête.
+  const refus = previsionDisponible(Date.UTC(2020, 0, 1), maintenant);
+  assert.equal(refus.disponible, false);
+  assert.ok(refus.fenetre.debutMs > 0, 'le refus porte ses bornes, pour pouvoir les dire');
+}
+
+// « Instant précis » est UN instant, pas un horizon de zéro échantillonné deux
+// fois : deux lignes identiques laisseraient croire à une évolution.
+assert.equal(nombreEchantillons(0), 1, 'instant précis → un seul échantillon');
+assert.equal(nombreEchantillons(30), 3);
+assert.equal(nombreEchantillons(60), 3);
+assert.equal(nombreEchantillons(120), 4);
+assert.equal(nombreEchantillons(240), 6);
+assert.equal(nombreEchantillons(360), 7);
+{
+  const P = { lat: -21.03, lng: 55.72 };
+  const debut = Date.UTC(2026, 11, 21, 10, 0);
+
+  const instant = echantillonsPointFixe(P, debut, 0);
+  assert.equal(instant.length, 1);
+  assert.equal(instant[0].passageTimeMs, debut, 'l’instant analysé est celui demandé');
+  assert.equal(instant[0].lat, P.lat); assert.equal(instant[0].lng, P.lng);
+
+  const deuxHeures = echantillonsPointFixe(P, debut, 120);
+  assert.equal(deuxHeures.length, 4);
+  assert.equal(deuxHeures[0].passageTimeMs, debut, 'la timeline commence à l’heure choisie');
+  assert.equal(deuxHeures.at(-1).passageTimeMs, debut + 120 * 60000, 'et finit à début + horizon');
+  assert.deepEqual(deuxHeures.map((x) => x.passageTimeMs - debut),
+    [0, 2400000, 4800000, 7200000], 'les instants sont régulièrement espacés');
+  assert.ok(deuxHeures.every((x) => x.lat === P.lat && x.lng === P.lng),
+    'le point ne bouge pas : c’est un point FIXE');
+
+  // Aucun échantillon ne retombe sur « maintenant ».
+  const loin = echantillonsPointFixe(P, Date.UTC(2027, 5, 1, 5, 0), 360);
+  assert.ok(loin.every((x) => Math.abs(x.passageTimeMs - Date.now()) > 86400000),
+    'une date lointaine n’est jamais silencieusement ramenée à maintenant');
+
+  assert.deepEqual(echantillonsPointFixe(null, debut, 60), [], 'pas de point, pas d’échantillon');
+  assert.deepEqual(echantillonsPointFixe(P, NaN, 60), [], 'pas d’heure, pas d’échantillon');
+}
+
+// Le Soleil se calcule à n'importe quelle date, même hors fenêtre météo :
+// c'est de l'astronomie, pas une prévision.
+{
+  const horsFenetre = Date.UTC(2031, 11, 21, 14, 30);
+  const s2 = solar(horsFenetre, -21.1151, 55.5364);
+  assert.ok(Number.isFinite(s2.elevation) && Number.isFinite(s2.azimuth),
+    'la géométrie solaire reste disponible hors fenêtre de prévision');
+  assert.equal(previsionDisponible(horsFenetre).disponible, false,
+    'alors que la météo, elle, ne l’est pas');
+}
+
+/* ── L'écran du point fixe ── */
+{
+  const j = fs.readFileSync(new URL('./journey.html', import.meta.url), 'utf8');
+  const nu = j.replace(/\s/g, '');
+  assert.ok(/id="statDate"/.test(j) && /id="statTime"/.test(j),
+    'date et heure d’observation sont saisissables');
+  assert.ok(/id="statMaintenant"/.test(j), 'le bouton Maintenant existe');
+  assert.ok(/Prévoir à ce point/.test(j), 'le bouton principal porte le libellé demandé');
+  assert.ok(/value="0">Instant précis/.test(nu.replace(/&nbsp;/g, '')) || /Instant précis/.test(j),
+    'l’horizon « Instant précis » est proposé');
+  for (const h of ['30 min', '1 h', '2 h', '4 h', '6 h']) {
+    assert.ok(j.includes(`>${h}<`), `l’horizon ${h} est proposé`);
+  }
+  // « Maintenant » remplit et ne lance rien.
+  assert.ok(/functionstatMaintenant\(\)\{[^}]*\}/.test(nu), 'statMaintenant est une fonction à part');
+  const corps = nu.match(/functionstatMaintenant\(\)\{([^}]*)\}/)[1];
+  assert.ok(!/planStationary|prevoir\(\)/.test(corps),
+    '« Maintenant » remplit les champs et ne déclenche aucun calcul');
+  // Le calcul lit le formulaire, pas l'horloge.
+  assert.ok(/constdebut=lireDebutPointFixe\(\)/.test(nu),
+    'le début vient du formulaire');
+  assert.ok(!/echantillonsPointFixe\(p,Date\.now\(\)/.test(nu),
+    'jamais Date.now() comme début du point fixe');
+  // La fenêtre est vérifiée AVANT l'appel.
+  const planif = nu.slice(nu.indexOf('asyncfunctionplanStationary'));
+  const iVerdict = planif.indexOf('previsionDisponible');
+  const iAppel = planif.indexOf('awaitweather(');
+  assert.ok(iVerdict > 0 && iAppel > 0 && iVerdict < iAppel,
+    'la disponibilité est vérifiée avant d’appeler Open-Meteo');
+  assert.ok(/servables=samples\.filter/.test(nu),
+    'seuls les instants servables partent à l’API');
+  assert.ok(/Prévisionindisponiblepourcettedate/.test(nu),
+    'la phrase exacte demandée est affichée');
+  // La boussole reste sur l'instant présent.
+  assert.ok(/constsun=solar\(Date\.now\(\),state\.stationaryPoint/.test(nu),
+    'la carte d’orientation décrit maintenant, pas l’heure simulée');
+  assert.ok(/pascelled’unvéhicule/.test(nu),
+    'l’orientation n’est jamais présentée comme celle d’une voiture');
+  // Aucun seuil météo introduit.
+  const carte = nu.slice(nu.indexOf('functioncarteInstant'), nu.indexOf('constcardinalDe'));
+  for (const v of ['cloudCover', 'visibility', 'directNormalIrradiance', 'windGusts', 'precipitation']) {
+    assert.ok(!new RegExp(`${v}[^,;]*[<>]=?\\s*\\d`).test(carte),
+      `aucun seuil appliqué à ${v} dans la carte instant`);
+  }
+  for (const champ of ['temperature', 'cloudCover', 'precipitation', 'visibility', 'windSpeed',
+    'windGusts', 'windDirection', 'directNormalIrradiance', 'weatherCode',
+    'instantValidTime', 'provider']) {
+    assert.ok(carte.includes(`w.${champ}`), `l’instant précis affiche ${champ}`);
+  }
 }
 
 console.log('RADIUS V0.2 Journey + Stationary — Soleil aligné sur index.html, échéances et règles figées OK');
