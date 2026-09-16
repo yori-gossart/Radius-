@@ -199,23 +199,67 @@ export function stationarySamples(point, startMs, endMs, count = 5) {
   });
 }
 
-/** Où est le Soleil par rapport à la direction regardée. Les bornes — 15, 45,
-    110, 160 — découpent une GÉOMÉTRIE ; ce ne sont pas des seuils de risque,
-    elles ne lisent pas `T` et ne produisent aucun `level`. Seuls les mots ont
-    changé le 16 septembre 2026 : « Soleil sur le côté droite » n'est pas du
-    français, et le conducteur dit « à droite ». Les angles, eux, sont intacts. */
+/* ---- les huit secteurs relatifs ----
+   Les bornes — 15, 45, 110, 160 — découpent une GÉOMÉTRIE. Ce ne sont pas des
+   seuils de risque : elles ne lisent pas `T` et ne produisent aucun `level`.
+
+   Le secteur et la phrase sortent de la MÊME fonction depuis le 16 septembre
+   2026 : la rose de direction et le texte doivent désigner le même secteur, et
+   deux tables d'angles séparées finiraient par diverger — ce dépôt s'est déjà
+   fait prendre à entretenir deux soleils. */
+export const SECTEURS_RELATIFS = ['devant', 'devant-droite', 'droite', 'derriere-droite',
+  'derriere', 'derriere-gauche', 'gauche', 'devant-gauche'];
+
+const MOT_SECTEUR = {
+  'devant': 'droit devant',
+  'devant-droite': 'devant à droite',
+  'droite': 'à droite',
+  'derriere-droite': 'derrière à droite',
+  'derriere': 'droit derrière',
+  'derriere-gauche': 'derrière à gauche',
+  'gauche': 'à gauche',
+  'devant-gauche': 'devant à gauche',
+};
+
+/** `deltaDeg` = écart cap → azimut. Positif vers la droite. */
+export function secteurRelatif(deltaDeg) {
+  if (!Number.isFinite(Number(deltaDeg))) return null;
+  const d = signedDelta(0, Number(deltaDeg));
+  const cote = d >= 0 ? 'droite' : 'gauche';
+  const a = Math.abs(d);
+  if (a <= 15) return 'devant';
+  if (a <= 45) return `devant-${cote}`;
+  if (a <= 110) return cote;
+  if (a <= 160) return `derriere-${cote}`;
+  return 'derriere';
+}
+
+export function libelleSecteur(secteur) {
+  return MOT_SECTEUR[secteur] || null;
+}
+
+/** Où est le Soleil par rapport à la direction regardée. */
 export function sunRelativeLabel(heading, sun) {
   if (!sun || !Number.isFinite(sun.elevation) || !Number.isFinite(sun.azimuth)) return 'Soleil indisponible';
   if (sun.elevation <= -0.833) return 'Soleil sous l’horizon';
   if (!Number.isFinite(Number(heading))) return `Soleil azimut ${Math.round(sun.azimuth)}°`;
-  const delta = signedDelta(Number(heading), sun.azimuth);
-  const side = delta >= 0 ? 'droite' : 'gauche';
-  const a = Math.abs(delta);
-  if (a <= 15) return 'Soleil droit devant';
-  if (a <= 45) return `Soleil devant à ${side}`;
-  if (a <= 110) return `Soleil à ${side}`;
-  if (a <= 160) return `Soleil derrière à ${side}`;
-  return 'Soleil droit derrière';
+  return `Soleil ${libelleSecteur(secteurRelatif(signedDelta(Number(heading), sun.azimuth)))}`;
+}
+
+/* ---- projection sur la rose ----
+   Vue de dessus, Nord EN HAUT. Un azimut se lit dans le sens horaire depuis le
+   haut : 0° = haut, 90° = droite. En SVG l'axe y descend, d'où le signe moins.
+   C'est une projection d'écran, pas une grandeur physique. */
+export const ROSE_CENTRE = 100;
+
+export function pointRose(deg, rayon) {
+  const d = Number(deg), r = Number(rayon);
+  if (!Number.isFinite(d) || !Number.isFinite(r)) return null;
+  const a = mod360(d) * R;
+  return {
+    x: ROSE_CENTRE + r * Math.sin(a),
+    y: ROSE_CENTRE - r * Math.cos(a),
+  };
 }
 
 /* ---- dire une direction en mots ----
@@ -264,13 +308,29 @@ export function qualitePosition(accuracyM) {
   return { metres: m, fiable: true, texte: `Précision GPS ≈ ${m} m.` };
 }
 
-export function compassHeadingFromEvent(event) {
-  if (Number.isFinite(Number(event?.webkitCompassHeading))) {
-    return { heading: mod360(Number(event.webkitCompassHeading)), absolute: true, source: 'webkitCompassHeading' };
+/** `Number(null)` vaut 0, et `Number.isFinite(0)` vaut vrai. Un téléphone sans
+    magnétomètre émet un événement d'orientation dont `alpha` est `null` : lu
+    sans précaution, il devenait un cap de 0° — plein Nord — annoncé comme une
+    mesure. Ce dépôt s'est déjà fait prendre par ce piège exact, avec une
+    latitude nulle devenue l'équateur. Une absence de mesure n'est pas zéro. */
+function nombreStrict(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : NaN;
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : NaN;
   }
-  if (Number.isFinite(Number(event?.alpha))) {
+  return NaN;
+}
+
+export function compassHeadingFromEvent(event) {
+  const webkit = nombreStrict(event?.webkitCompassHeading);
+  if (Number.isFinite(webkit)) {
+    return { heading: mod360(webkit), absolute: true, source: 'webkitCompassHeading' };
+  }
+  const alpha = nombreStrict(event?.alpha);
+  if (Number.isFinite(alpha)) {
     return {
-      heading: mod360(360 - Number(event.alpha)),
+      heading: mod360(360 - alpha),
       absolute: event?.absolute === true,
       source: event?.absolute === true ? 'deviceorientationabsolute' : 'deviceorientation',
     };

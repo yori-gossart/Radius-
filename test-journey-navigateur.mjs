@@ -19,6 +19,10 @@ const args = Object.fromEntries(process.argv.slice(2)
   .map((a) => a.replace(/^--/, '').split('=')).map(([k, v]) => [k, v ?? '1']));
 const RACINE = path.resolve(args.racine || process.cwd());
 const playwright = createRequire(import.meta.url)('playwright');
+/* Le module est importé ICI, côté Node : `page.evaluate` ne voit pas la portée
+   d'un <script type="module">. L'attendu est donc calculé indépendamment de la
+   page, ce qui croise les deux plutôt que de faire confiance à l'une des deux. */
+const noyau = await import(new URL('./journey-core.mjs', import.meta.url).href);
 
 const A = { lat: -20.88, lng: 55.45, label: 'Saint-Benoît, La Réunion' };
 const B = { lat: -21.17, lng: 55.29, label: 'Saint-Leu, La Réunion' };
@@ -373,7 +377,7 @@ chk('le point fixe fonctionne sans capteur d’orientation', erreursJS.length ==
 
 console.log('\n== Boussole · un écran humain ==');
 await page.click('#compassBtn');
-const envoyer = (alpha, absolute, nom) => page.evaluate(([a, abs, n]) => {
+const envoyerOrientation = (alpha, absolute, nom) => page.evaluate(([a, abs, n]) => {
   const e = new Event(n);
   Object.defineProperty(e, 'alpha', { value: a });
   Object.defineProperty(e, 'absolute', { value: abs });
@@ -381,7 +385,7 @@ const envoyer = (alpha, absolute, nom) => page.evaluate(([a, abs, n]) => {
 }, [alpha, absolute, nom]);
 
 // α = 210 → cap 150° → Sud-Est, l'exemple demandé.
-await envoyer(210, true, 'deviceorientationabsolute');
+await envoyerOrientation(210, true, 'deviceorientationabsolute');
 const cap = await page.textContent('#heading');
 chk('la direction est dite en mots avant le chiffre', cap.trim() === 'Sud-Est · 150°', cap.trim());
 chk('l’écran explique ce que cette direction représente',
@@ -425,18 +429,180 @@ await page.click('#tabStationary');
 await page.click('#prevoir');
 await page.waitForSelector('#liveCard:not(.hidden)', { timeout: 30000 }).catch(() => {});
 await page.click('#compassBtn');
-await envoyer(90, false, 'deviceorientation');
+await envoyerOrientation(90, false, 'deviceorientation');
 chk('une orientation relative est affichée, mais désignée comme telle',
   /Ouest · 270°/.test(await page.textContent('#heading'))
   && /pas un vrai nord magnétique/.test(await page.textContent('#compassQuality')),
   (await page.textContent('#compassQuality')).slice(0, 70));
 chk('le niveau 3 la nomme relative',
   /relative\/estimée/.test(await page.textContent('#compassTech')));
-await envoyer(210, true, 'deviceorientationabsolute');
-await envoyer(90, false, 'deviceorientation');
+await envoyerOrientation(210, true, 'deviceorientationabsolute');
+await envoyerOrientation(90, false, 'deviceorientation');
 chk('une relative n’écrase jamais une absolue déjà obtenue',
   /Sud-Est · 150°/.test(await page.textContent('#heading')),
   await page.textContent('#heading'));
+
+console.log('\n== Rose de direction ==');
+// Position et heure connues : 22/12/2026 17:45 locale à Saint-Benoît.
+await page.goto(base + '/journey.html');
+await page.evaluate(() => { window.__precisionGps = 12; });
+await page.click('#tabStationary');
+chk('la rose existe avant toute capture', await page.isVisible('#rose'));
+chk('sans position, la rose le dit plutôt que d’inventer un Soleil',
+  /Position non capturée/.test(await page.textContent('#roseQuand'))
+  && (await page.$$eval('#rose #roseSoleil', (n) => n.length)) === 0,
+  await page.textContent('#roseQuand'));
+
+/* `#instantBloc:not(.hidden)` se résout INSTANTANÉMENT quand un calcul
+   précédent l'a déjà rendu visible : on lirait alors l'ancien dessin. On
+   attend donc l'heure elle-même, c'est-à-dire le changement qu'on éprouve. */
+const attendreRose = (hhmm) => page.waitForFunction(
+  (h) => (document.getElementById('roseQuand').textContent || '').includes(h),
+  hhmm, { timeout: 30000 }).catch(() => {});
+
+await page.fill('#statDate', '2026-12-22'); await page.fill('#statTime', '17:45');
+await page.selectOption('#stationaryDuration', '0');
+await page.click('#prevoir');
+await attendreRose('17:45');
+await page.click('#compassBtn');
+await envoyerOrientation(210, true, 'deviceorientationabsolute');   // cap 150° = Sud-Est
+
+const rose = () => page.evaluate(() => {
+  const svg = document.getElementById('rose');
+  const soleil = svg.querySelector('#roseSoleil');
+  const fleche = svg.querySelector('#roseFleche');
+  const textes = [...svg.querySelectorAll('text')].map((t) => t.textContent.trim());
+  const secteur = svg.querySelector('path[fill="#FFB43A"]');
+  return {
+    viewBox: svg.getAttribute('viewBox'),
+    aria: svg.getAttribute('aria-label'),
+    azimut: soleil && Number(soleil.dataset.azimut),
+    couche: soleil && soleil.dataset.couche === '1',
+    cap: fleche && Number(fleche.dataset.cap),
+    textes,
+    secteurMisEnEvidence: !!secteur,
+  };
+});
+const r1 = await rose();
+chk('la rose est un SVG 200×200', r1.viewBox === '0 0 200 200', r1.viewBox);
+chk('le Nord est affiché en haut, avec les trois autres points',
+  ['N', 'E', 'S', 'O'].every((c) => r1.textes.includes(c)), r1.textes.join(' '));
+chk('la flèche porte le cap du téléphone', r1.cap === 150, String(r1.cap));
+chk('le Soleil est placé selon son azimut',
+  Number.isFinite(r1.azimut) && r1.azimut > 0 && r1.azimut < 360, String(r1.azimut));
+chk('le secteur occupé par le Soleil est mis en évidence', r1.secteurMisEnEvidence);
+chk('l’élévation est lisible à côté du Soleil',
+  r1.textes.some((t) => /^-?\d+°$/.test(t)), r1.textes.join(' '));
+
+// La position relative doit être la MÊME que celle dite en toutes lettres.
+const dit = (await page.textContent('#liveSun')).trim();
+/** Ce que le niveau 3 expose suffit à tout recalculer de l'extérieur. */
+async function etatRose() {
+  const t = await page.textContent('#compassTech');
+  const pt = t.match(/Point (-?\d+\.\d+), (-?\d+\.\d+)/);
+  const inst = t.match(/instant représenté (\S+)/);
+  const cap = t.match(/Cap téléphone (-?\d+\.\d+)°/);
+  return {
+    lat: pt && Number(pt[1]), lng: pt && Number(pt[2]),
+    instantMs: inst && Date.parse(inst[1]),
+    cap: cap ? Number(cap[1]) : null,
+  };
+}
+const e1 = await etatRose();
+const sun1 = noyau.solar(e1.instantMs, e1.lat, e1.lng);
+const attendu = `Soleil ${noyau.libelleSecteur(
+  noyau.secteurRelatif(noyau.signedDelta(e1.cap, sun1.azimuth)))}`;
+chk('la rose et le texte désignent le même secteur', dit === attendu, `${dit} · ${attendu}`);
+chk('l’azimut dessiné est bien celui du moteur',
+  Math.abs(r1.azimut - sun1.azimuth) < 0.05,
+  `dessiné ${r1.azimut}° · moteur ${sun1.azimuth.toFixed(1)}°`);
+chk('le secteur est l’un des huit demandés',
+  /^Soleil (droit devant|devant à (droite|gauche)|à (droite|gauche)|derrière à (droite|gauche)|droit derrière)$/
+    .test(dit), dit);
+chk('l’étiquette accessible dit la même chose',
+  new RegExp(dit.replace('Soleil ', '')).test(r1.aria), r1.aria);
+
+// La rose représente l'heure CHOISIE, pas l'heure courante.
+const ecart = Math.abs(e1.instantMs - MAINTENANT);
+chk('la rose représente l’heure d’observation choisie, pas maintenant',
+  ecart > 3600000, `${Math.round(ecart / 60000)} min d’écart avec maintenant`);
+chk('l’instant représenté est exactement celui saisi',
+  new Date(e1.instantMs).toISOString() === '2026-12-22T13:45:00.000Z',
+  new Date(e1.instantMs).toISOString());
+chk('et la légende le dit',
+  /22\/12.*17:45/.test(await page.textContent('#roseQuand'))
+  && /flèche = orientation actuelle/.test(await page.textContent('#roseQuand')),
+  await page.textContent('#roseQuand'));
+
+// Le niveau 3 conserve tout.
+const tech1 = await page.textContent('#compassTech');
+for (const [quoi, motif] of [
+  ['azimut', /Soleil azimut \d+\.\d+°/],
+  ['élévation', /élévation -?\d+\.\d+°/],
+  ['heading', /Cap téléphone 150\.0°/],
+  ['delta heading→soleil', /Écart cap→Soleil -?\d+\.\d+°/],
+  ['secteur', /secteur (devant|droite|gauche|derriere)/],
+  ['type absolu/relatif', /Orientation absolue \(référencée au nord\)/],
+  ['source capteur', /source deviceorientationabsolute/],
+  ['instant représenté', /Rose : instant représenté .*heure d’observation choisie/],
+]) chk(`niveau 3 — ${quoi}`, motif.test(tech1), (tech1.match(motif) || ['(absent)'])[0]);
+
+console.log('\n== Rose · Soleil sous l’horizon ==');
+await page.fill('#statTime', '23:30');
+await page.click('#prevoir');
+await attendreRose('23:30');
+const r2 = await rose();
+const e2 = await etatRose();
+chk('la flèche n’a pas bougé : la boussole est indépendante de l’heure choisie',
+  r2.cap === 150, `flèche ${r2.cap}° · niveau 3 ${e2.cap}°`);
+chk('le marqueur du Soleil est marqué « sous l’horizon »', r2.couche === true, String(r2.couche));
+// Le mot du marqueur est court : « sous l’horizon » traversait la flèche.
+// La phrase entière vit dans la légende, sous la rose.
+chk('et le dit visuellement dans la rose, au marqueur',
+  r2.textes.includes('couché'), r2.textes.join(' | '));
+chk('l’élévation négative est lisible sur la rose elle-même',
+  r2.textes.some((t) => /^-\d+°$/.test(t)), r2.textes.join(' | '));
+chk('aucun secteur n’est mis en évidence quand le Soleil est couché',
+  r2.secteurMisEnEvidence === false);
+chk('l’étiquette accessible le dit aussi', /sous l’horizon/.test(r2.aria), r2.aria);
+// `#liveSun` et `#compassTech` décrivent l'instant PRÉSENT, pas l'heure
+// simulée : c'est la rose qui porte l'heure choisie. Les deux horloges
+// coexistent, et chacune doit rester à sa place.
+const sun2 = noyau.solar(e2.instantMs, e2.lat, e2.lng);
+chk('le Soleil de la rose est bien sous l’horizon à l’heure choisie',
+  sun2.elevation < 0, `${sun2.elevation.toFixed(1)}° à ${new Date(e2.instantMs).toISOString()}`);
+// La phrase doit suivre la rose, sinon l'écran se contredit : une rose qui
+// montre un Soleil couché au-dessus d'un « Soleil à droite » se lit comme une
+// panne. C'est l'ORIENTATION qui reste sur maintenant, pas le Soleil.
+chk('la phrase sous la rose décrit le même instant qu’elle',
+  (await page.textContent('#liveSun')).trim() === 'Soleil couché',
+  await page.textContent('#liveSun'));
+chk('et dit que c’est à l’heure choisie, pas « actuellement »',
+  /à l’heure d’observation choisie/.test(await page.textContent('#liveSunNote')),
+  await page.textContent('#liveSunNote'));
+chk('le niveau 3 garde quand même le Soleil de maintenant',
+  /Soleil maintenant \(.*\) : azimut \d+\.\d+° · élévation \d+\.\d+°/
+    .test(await page.textContent('#compassTech')),
+  ((await page.textContent('#compassTech')).match(/Soleil maintenant[^\n]*/) || ['(absent)'])[0]);
+chk('le niveau 3 distingue les deux horloges',
+  /instant représenté 2026-12-22T19:30/.test(await page.textContent('#compassTech')),
+  ((await page.textContent('#compassTech')).match(/Rose[^\n]*/) || ['(absent)'])[0]);
+
+console.log('\n== Rose · sans boussole ==');
+await page.goto(base + '/journey.html');
+await page.evaluate(() => { window.__precisionGps = 12; });
+await page.click('#tabStationary');
+await page.click('#prevoir');
+await page.waitForSelector('#stationaryForecast:not(.hidden)', { timeout: 30000 }).catch(() => {});
+await page.waitForFunction(() => document.querySelector('#rose #roseSoleil') !== null,
+  null, { timeout: 30000 }).catch(() => {});
+const r3 = await rose();
+chk('sans boussole, aucune flèche n’est inventée', r3.cap === null, String(r3.cap));
+chk('mais le Soleil est quand même situé sur la rose',
+  Number.isFinite(r3.azimut), String(r3.azimut));
+chk('et aucun secteur relatif n’est affirmé', r3.secteurMisEnEvidence === false);
+chk('la rose reste lisible sans capteur', erreursJS.length === 0,
+  erreursJS.slice(0, 2).join(' | '));
 
 console.log('\n== Soleil couché ==');
 // 21 décembre 23:00 locale : le Soleil est largement sous l'horizon.

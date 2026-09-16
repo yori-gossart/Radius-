@@ -429,11 +429,48 @@ substitution silencieuse par « maintenant ».
 de l'astronomie, pas une prévision. Une date hors fenêtre météo garde donc sa
 géométrie solaire complète.
 
-**La boussole est indépendante de l'heure choisie.** Elle décrit l'orientation
-du téléphone **maintenant**, et la carte « Orientation en direct » le dit. Quand
-elle est active, cette direction sert à situer le Soleil à chaque instant simulé
-— toujours annoncée comme celle du **haut du téléphone**, jamais celle d'un
-véhicule.
+**L'orientation est indépendante de l'heure choisie, le Soleil ne l'est pas.**
+Correction du 16 septembre 2026, trouvée en regardant l'écran : une rose montrant
+un Soleil couché au-dessus d'une phrase « Soleil à droite » se lit comme une
+panne, pas comme deux horloges. La règle est donc :
+
+- **l'orientation** est toujours celle du téléphone **maintenant** — c'est la
+  seule chose qui ne se simule pas ; `state.heading` n'a qu'une seule affectation
+  dans tout le fichier, celle du capteur ;
+- **le Soleil**, lui, suit l'instant représenté : l'heure d'observation choisie
+  si elle existe, l'heure courante sinon. La rose et la phrase qui la suit
+  décrivent le même instant, et l'écran le dit ;
+- le niveau 3 conserve **les deux** : le Soleil à l'instant représenté et le
+  Soleil de maintenant, chacun horodaté.
+
+La direction est toujours annoncée comme celle du **haut du téléphone**, jamais
+celle d'un véhicule.
+
+**La rose de direction.** Vue de dessus, Nord en haut, l'observateur au centre.
+Ce n'est pas une carte : aucune route, aucune distance. Elle situe deux choses —
+la direction du haut du téléphone et l'azimut du Soleil — plus le secteur relatif
+mis en évidence. SVG natif, aucune bibliothèque.
+
+L'élévation n'a pas d'axe : une vue de dessus n'en a pas. Elle est écrite en
+chiffres au-dessus du marqueur, et sous l'horizon le marqueur **change d'aspect**
+— disque creux, tireté, barré d'une ligne d'horizon — plutôt que de descendre.
+Le faire descendre inventerait une géométrie.
+
+**Le mot est écrit au marqueur, pas seulement en légende.** La rose est orientée
+Nord en haut : quand on regarde le Sud-Est, « à droite » tombe visuellement en bas
+à gauche. Sans le mot au bon endroit, l'écran a l'air de se contredire.
+
+`secteurRelatif()` et `sunRelativeLabel()` sortent de la **même** fonction : la
+rose et le texte doivent désigner le même secteur, et deux tables d'angles
+séparées finiraient par diverger — ce dépôt s'est déjà fait prendre à entretenir
+deux soleils. Les bornes 15 / 45 / 110 / 160 sont inchangées.
+
+**Une absence de mesure n'est pas zéro.** `Number(null)` vaut 0 et
+`Number.isFinite(0)` vaut vrai : un téléphone sans magnétomètre émet un événement
+d'orientation dont `alpha` est `null`, et il devenait un cap de 0° — plein Nord —
+annoncé comme une mesure **absolue**. `compassHeadingFromEvent()` lit désormais
+strictement. C'est le même piège que la latitude nulle devenue l'équateur ; il
+faut le chercher partout où une donnée capteur entre.
 
 **Les règles figées s'appliquent aussi à cette branche.** `journey.html` n'a
 aucun `fetch()` nu : les trois appels passent par `fetchBorne()`. La météo y est
@@ -458,7 +495,9 @@ Bancs : `test-journey-v02.mjs` (fonctions pures, accord solaire, échéances,
 directions cardinales, qualité GPS, fenêtre de prévision, échantillonnage du
 point fixe) et `test-journey-navigateur.mjs` (84 contrôles Playwright sur la
 page réelle, dont le GPS à 2 km, le Soleil couché, l'instant précis champ par
-champ, et les dates passées ou trop lointaines qui ne partent jamais à l'API).
+champ, les dates passées ou trop lointaines qui ne partent jamais à l'API, et la
+rose croisée contre le moteur importé côté Node — `page.evaluate` ne voit pas la
+portée d'un module ES, un banc qui l'ignore s'auto-approuve en silence).
 
 ## La règle de parole
 

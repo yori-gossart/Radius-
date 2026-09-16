@@ -4,7 +4,8 @@ import {
   sunRelativeLabel, compassHeadingFromEvent, fetchBorne,
   cardinal, directionLisible, qualitePosition, PRECISION_TERRAIN_M,
   fenetrePrevision, previsionDisponible, nombreEchantillons, echantillonsPointFixe,
-  HORIZON_PREVISION_JOURS,
+  HORIZON_PREVISION_JOURS, secteurRelatif, libelleSecteur, SECTEURS_RELATIFS,
+  pointRose, ROSE_CENTRE, mod360,
 } from './journey-core.mjs';
 
 const near = (a,b,t=1e-6) => Math.abs(a-b) <= t;
@@ -54,6 +55,18 @@ for (let az = 0; az < 360; az += 3) {
 
 assert.deepEqual(compassHeadingFromEvent({webkitCompassHeading:275}), {heading:275,absolute:true,source:'webkitCompassHeading'});
 assert.deepEqual(compassHeadingFromEvent({alpha:90,absolute:true}), {heading:270,absolute:true,source:'deviceorientationabsolute'});
+/* Une absence de mesure n'est pas zéro. Un téléphone sans magnétomètre émet un
+   événement dont `alpha` est `null` ; `Number(null)` valant 0, il devenait un
+   cap de 0° — plein Nord — annoncé comme une mesure absolue. */
+for (const sourd of [{ alpha: null, absolute: true }, { alpha: null }, { alpha: undefined },
+  { webkitCompassHeading: null, alpha: null }, { alpha: '' }, { alpha: '  ' },
+  { alpha: 'nord' }, {}, null, undefined]) {
+  assert.equal(compassHeadingFromEvent(sourd), null,
+    `aucun cap inventé pour ${JSON.stringify(sourd)}`);
+}
+assert.deepEqual(compassHeadingFromEvent({ alpha: 0, absolute: true }),
+  { heading: 0, absolute: true, source: 'deviceorientationabsolute' },
+  'un vrai zéro mesuré reste un cap valide');
 
 console.log('RADIUS V0.2 Journey + Stationary — tests déterministes OK');
 
@@ -220,8 +233,8 @@ assert.ok(!/level|score|high|moderate/i.test(JSON.stringify([flou, net, inconnu]
   assert.ok(/id="compassTech"/.test(j), 'un bloc de détails techniques existe');
   assert.ok(/Direction vers laquelle pointe le haut du téléphone/.test(j),
     'l’écran explique ce que la direction représente');
-  assert.ok(/Soleil couché/.test(j) && /Aucune exposition solaire actuellement/.test(j),
-    'le Soleil sous l’horizon est dit en clair');
+  assert.ok(/Soleil couché/.test(j) && /Aucune exposition solaire \$\{quand\}/.test(j),
+    'le Soleil sous l’horizon est dit en clair, à l’instant représenté');
   assert.ok(/directionLisible\(/.test(j), 'le cap principal passe par les mots');
   // Le gros chiffre nu a disparu de l'écran principal.
   assert.ok(!/\$\('heading'\)\.textContent=`\$\{Math\.round/.test(j.replace(/\s/g, '')),
@@ -346,9 +359,21 @@ assert.equal(nombreEchantillons(360), 7);
     'seuls les instants servables partent à l’API');
   assert.ok(/Prévisionindisponiblepourcettedate/.test(nu),
     'la phrase exacte demandée est affichée');
-  // La boussole reste sur l'instant présent.
-  assert.ok(/constsun=solar\(Date\.now\(\),state\.stationaryPoint/.test(nu),
-    'la carte d’orientation décrit maintenant, pas l’heure simulée');
+  // Ce qui reste sur « maintenant », c'est l'ORIENTATION — la seule chose qui
+  // ne se simule pas. Le Soleil de la carte, lui, suit la rose : sinon l'écran
+  // affiche un Soleil couché au-dessus d'un « Soleil à droite ».
+  assert.ok(/constt=instantRose\(\);/.test(nu),
+    'la phrase de la carte décrit le même instant que la rose');
+  assert.ok(/constsun=solar\(t,state\.stationaryPoint/.test(nu),
+    'et c’est bien cet instant-là qui est calculé');
+  assert.ok(/constn=solar\(Date\.now\(\),p2\.lat,p2\.lng\)/.test(nu),
+    'le niveau 3 conserve malgré tout le Soleil de maintenant');
+  // L'orientation ne vient QUE du capteur : une seule affectation, et c'est
+  // celle que compassHeadingFromEvent a lue. Aucune heure simulée ne peut
+  // la fabriquer.
+  const affectations = nu.match(/state\.heading=[^;,)]*/g) || [];
+  assert.deepEqual(affectations, ['state.heading=h.heading'],
+    `l’orientation ne vient que du capteur — trouvé ${JSON.stringify(affectations)}`);
   assert.ok(/pascelled’unvéhicule/.test(nu),
     'l’orientation n’est jamais présentée comme celle d’une voiture');
   // Aucun seuil météo introduit.
@@ -362,6 +387,123 @@ assert.equal(nombreEchantillons(360), 7);
     'instantValidTime', 'provider']) {
     assert.ok(carte.includes(`w.${champ}`), `l’instant précis affiche ${champ}`);
   }
+}
+
+/* ── Les huit secteurs relatifs (16 septembre 2026) ── */
+assert.deepEqual(SECTEURS_RELATIFS, ['devant', 'devant-droite', 'droite', 'derriere-droite',
+  'derriere', 'derriere-gauche', 'gauche', 'devant-gauche'],
+  'les huit secteurs demandés, dans l’ordre horaire');
+
+// Les bornes sont celles de sunRelativeLabel, figées : 15, 45, 110, 160.
+const BASCULES = [
+  [0, 'devant'], [15, 'devant'], [15.0001, 'devant-droite'],
+  [45, 'devant-droite'], [45.0001, 'droite'],
+  [110, 'droite'], [110.0001, 'derriere-droite'],
+  [160, 'derriere-droite'], [160.0001, 'derriere'], [180, 'derriere'],
+  [-15, 'devant'], [-15.0001, 'devant-gauche'],
+  [-45, 'devant-gauche'], [-45.0001, 'gauche'],
+  [-110, 'gauche'], [-110.0001, 'derriere-gauche'],
+  [-160, 'derriere-gauche'], [-160.0001, 'derriere'], [-180, 'derriere'],
+];
+for (const [d, attendu] of BASCULES) {
+  assert.equal(secteurRelatif(d), attendu, `secteur à ${d}°`);
+}
+assert.equal(secteurRelatif(NaN), null, 'aucun secteur sans écart mesurable');
+assert.equal(secteurRelatif(undefined), null);
+// Un écart hors [-180,180] est ramené dans le tour, jamais refusé.
+assert.equal(secteurRelatif(370), 'devant', '370° = 10°');
+assert.equal(secteurRelatif(-370), 'devant');
+assert.equal(secteurRelatif(200), 'derriere-gauche', '200° = -160°');
+
+// Tout le tour est couvert, sans trou, par exactement huit secteurs.
+{
+  const vus = new Set();
+  for (let d = -180; d < 180; d += 0.25) {
+    const sec = secteurRelatif(d);
+    assert.ok(sec, `un secteur existe à ${d}°`);
+    assert.ok(SECTEURS_RELATIFS.includes(sec), `secteur connu à ${d}°`);
+    vus.add(sec);
+  }
+  assert.equal(vus.size, 8, 'huit secteurs, ni plus ni moins');
+}
+
+// LE POINT QUI COMPTE : la rose et la phrase désignent le même secteur. Deux
+// tables d'angles séparées finiraient par diverger — ce dépôt s'est déjà fait
+// prendre à entretenir deux soleils.
+for (let cap = 0; cap < 360; cap += 7) {
+  for (let az = 0; az < 360; az += 3) {
+    const phrase = sunRelativeLabel(cap, { azimuth: az, elevation: 12 });
+    const sec = secteurRelatif(signedDelta(cap, az));
+    assert.equal(phrase, `Soleil ${libelleSecteur(sec)}`,
+      `rose et texte d’accord — cap ${cap}°, azimut ${az}°`);
+  }
+}
+for (const sec of SECTEURS_RELATIFS) {
+  assert.ok(typeof libelleSecteur(sec) === 'string' && libelleSecteur(sec).length > 2,
+    `le secteur ${sec} a un libellé lisible`);
+  assert.ok(!/éblou|gên|dangereu/i.test(libelleSecteur(sec)),
+    `le secteur ${sec} décrit une géométrie, jamais une gêne`);
+}
+assert.equal(libelleSecteur('inconnu'), null);
+
+/* ── Projection sur la rose : Nord en haut, horaire ── */
+assert.equal(ROSE_CENTRE, 100);
+{
+  const r = 80;
+  const proche = (p, x, y, m) => {
+    assert.ok(Math.abs(p.x - x) < 1e-9 && Math.abs(p.y - y) < 1e-9,
+      `${m} — attendu (${x}, ${y}), obtenu (${p.x.toFixed(3)}, ${p.y.toFixed(3)})`);
+  };
+  proche(pointRose(0, r), 100, 20, 'Nord est EN HAUT');
+  proche(pointRose(90, r), 180, 100, 'Est est à droite');
+  proche(pointRose(180, r), 100, 180, 'Sud est en bas');
+  proche(pointRose(270, r), 20, 100, 'Ouest est à gauche');
+  proche(pointRose(360, r), 100, 20, 'le tour complet revient au Nord');
+  // Le sens est horaire : à 45°, on est en haut À DROITE.
+  const ne = pointRose(45, r);
+  assert.ok(ne.x > 100 && ne.y < 100, 'le Nord-Est est en haut à droite');
+  const so = pointRose(225, r);
+  assert.ok(so.x < 100 && so.y > 100, 'le Sud-Ouest est en bas à gauche');
+  // Le rayon est respecté : tout point est à `rayon` du centre.
+  for (let d = 0; d < 360; d += 11) {
+    const p = pointRose(d, r);
+    assert.ok(Math.abs(Math.hypot(p.x - 100, p.y - 100) - r) < 1e-9,
+      `le point à ${d}° est bien sur le cercle`);
+  }
+  assert.equal(pointRose(NaN, r), null, 'aucun point sans direction');
+  assert.equal(pointRose(0, NaN), null);
+}
+
+/* ── La rose dans la page ── */
+{
+  const j = fs.readFileSync(new URL('./journey.html', import.meta.url), 'utf8');
+  const nu = j.replace(/\s/g, '');
+  assert.ok(/id="rose"/.test(j) && /viewBox="0 0 200 200"/.test(j),
+    'la rose est un SVG natif, sans bibliothèque');
+  assert.ok(!/<script src=/.test(j) && !/import .* from ['"]http/.test(j),
+    'aucune dépendance externe');
+  assert.ok(/functiondessinerRose\(\)/.test(nu));
+  // L'instant représenté est l'heure choisie si elle existe, maintenant sinon.
+  assert.ok(/Number\.isFinite\(state\.statDebutMs\)\?state\.statDebutMs:Date\.now\(\)/.test(nu),
+    'la rose représente l’heure d’observation choisie, l’heure courante sinon');
+  // La flèche est le téléphone, jamais un véhicule.
+  assert.ok(/Jamaislecapd'unvéhicule\./.test(nu.replace(/’/g, "'"))
+    || /Jamaislecapd’unvéhicule/.test(nu),
+    'la flèche est annoncée comme le haut du téléphone, jamais le cap d’un véhicule');
+  // Aucun seuil ni formule d'éblouissement dans le dessin.
+  const rose = nu.slice(nu.indexOf('functiondessinerRose'), nu.indexOf('functionetiquetteRose'));
+  assert.ok(!/\bT\.|maxElev|maxDelta|score|éblou/i.test(rose),
+    'la rose n’introduit ni seuil ni formule d’éblouissement');
+  // Le niveau 3 garde tout ce qui est demandé.
+  const iTech = nu.indexOf('functionorientationTech');
+  assert.ok(iTech > 0, 'orientationTech existe');
+  const tech = nu.slice(iTech, nu.indexOf('setInterval(updateLiveSun', iTech));
+  for (const [quoi, motif] of [
+    ['azimut', /Soleilazimut/], ['élévation', /élévation/],
+    ['heading', /Captéléphone/], ['delta heading→soleil', /Écartcap→Soleil/],
+    ['secteur', /secteur\$\{secteurRelatif/], ['absolu/relatif', /absolue\(référencéeaunord\)/],
+    ['source capteur', /sourcex?\$?\{?state\.compassSource|compassSource/],
+  ]) assert.ok(motif.test(tech), `le niveau 3 conserve ${quoi}`);
 }
 
 console.log('RADIUS V0.2 Journey + Stationary — Soleil aligné sur index.html, échéances et règles figées OK');
