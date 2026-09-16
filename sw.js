@@ -9,7 +9,7 @@
 // jamais supprimé : un index.html périmé pouvait revenir hors ligne avec
 // d'anciens seuils T, et les relevés de terrain porteraient sur autre chose
 // que ce qu'on croit avoir déployé.
-const VERSION = 'v4';
+const VERSION = 'v5';
 const CACHE = `radius-${VERSION}`;
 const FICHIERS = ['./', 'index.html', 'manifest.json', 'icon.svg'];
 
@@ -43,8 +43,12 @@ self.addEventListener('fetch', (event) => {
   // La page elle-même : réseau d'abord. Les seuils de T changent d'une
   // sortie à l'autre ; servir une version en cache ferait relever le terrain
   // avec des seuils qu'on croit modifiés.
+  // Les modules .mjs suivent la même règle que les pages. journey-core.mjs
+  // porte la position solaire : servi depuis le cache sous une page fraîche,
+  // il ferait relever le terrain avec un moteur qu'on croit remplacé — le
+  // défaut même que la version du cache existe pour empêcher.
   const estPage = req.mode === 'navigate' || url.pathname.endsWith('.html')
-    || url.pathname.endsWith('/');
+    || url.pathname.endsWith('.mjs') || url.pathname.endsWith('/');
   if (estPage) {
     event.respondWith(fetch(req)
       .then((res) => {

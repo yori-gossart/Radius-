@@ -322,6 +322,65 @@ gardée : une panne se dit, elle ne fige pas la page.
 Banc : `test-figeage.mjs`, 22 contrôles, dont un serveur qui ne répond jamais et
 ne ferme jamais la socket — la seule façon de reproduire ce qu'a vu le téléphone.
 
+## V0.2 Journey + Stationary — branche d'expérimentation
+
+Branche `radius-v0.2-journey-stationary`, 16 septembre 2026. **Elle ne fusionne
+pas dans la branche principale.** `index.html` n'est pas touché : la V0.2 vit
+dans `journey.html`, `journey-core.mjs` et `api/journey-weather.js`, à côté du
+produit, jamais à sa place.
+
+Ce qu'elle ajoute : une sortie est une séquence temporelle complète — aller,
+temps sur place, retour — et non un trajet isolé. Chaque phase garde son
+horloge, et le retour est **redemandé à Google Routes** à l'heure réelle de fin
+de séjour, jamais obtenu en inversant la géométrie de l'aller. C'est la même
+règle qu'en V0.5, appliquée à une sortie entière.
+
+**Il n'y a qu'un seul Soleil.** `journey-core.mjs` embarque sa propre copie de
+`solar()` parce que `index.html` n'exporte rien. À la livraison, cette copie
+**n'appliquait pas la réfraction atmosphérique** : jusqu'à 0,27° d'écart en
+élévation à l'approche de l'horizon — exactement le régime où vit le produit, et
+où `T.high.maxElev` vaut 8°. Deux pages auraient décrit deux soleils, et un
+relevé fait sur `journey.html` aurait été incomparable avec un relevé fait sur
+`index.html`. Le bloc de réfraction d'`index.html` y a été repris à l'identique,
+et `test-journey-v02.mjs` rejoue les deux implémentations l'une contre l'autre,
+la référence étant **extraite d'`index.html` à l'exécution**. Elles ne peuvent
+plus diverger en silence.
+
+**Les libellés de direction ne sont pas des seuils.** `sunRelativeLabel()`
+découpe l'écart cap/azimut en « dans l'axe », « devant », « sur le côté »,
+« derrière ». Ce sont des mots pour décrire une géométrie, pas des niveaux de
+risque : ils ne lisent pas `T`, ne produisent aucun `level`, et ne concluent
+jamais à une gêne vécue.
+
+**`api/journey-weather.js` est descriptif par contrat.** Neuf variables —
+température, précipitation, couverture nuageuse, visibilité, vent, rafales,
+direction du vent, DNI, code météo — plus l'heure de validité et la provenance.
+**Aucun seuil, aucun score, aucun champ de verdict.** `test-api.mjs` l'éprouve
+sur une vraie réponse en refusant toute clé qui ressemblerait à une conclusion,
+et le fait passer par le même durcissement d'entrée que les trois autres
+endpoints, avec les mêmes codes d'erreur.
+
+**La boussole ne sert qu'au point fixe.** Sur route, le cap de référence reste
+celui du trajet ou du GPS ; l'orientation physique du téléphone ne le remplace
+jamais. Une orientation **relative** n'est jamais présentée comme un nord
+magnétique, et une orientation absolue déjà obtenue n'est jamais écrasée par une
+relative. Sans capteur, sans permission ou sans navigateur compatible, la page
+continue de fonctionner : la boussole est un supplément, pas une dépendance.
+
+**Les règles figées s'appliquent aussi à cette branche.** `journey.html` n'a
+aucun `fetch()` nu : les trois appels passent par `fetchBorne()`. La météo y est
+passive au sens fort — sa panne dégrade son propre statut, dit pourquoi, et
+laisse le trajet, le séjour et la géométrie solaire s'afficher. Un fournisseur
+autre que `google-routes` est refusé, sans repli.
+
+Le cache du service worker traite désormais les `.mjs` comme les pages, en
+réseau d'abord : `journey-core.mjs` porte la position solaire, et servi depuis
+le cache sous une page fraîche il ferait relever le terrain avec un moteur qu'on
+croit remplacé.
+
+Bancs : `test-journey-v02.mjs` (fonctions pures, accord solaire, échéances) et
+`test-journey-navigateur.mjs` (30 contrôles Playwright sur la page réelle).
+
 ## La règle de parole
 
 Le produit parle **par-dessus un GPS qui parle déjà**, et aucun système

@@ -53,6 +53,8 @@ const repTexte = (t, status = 200) => new Response(t, { status });
 const route = { chemin: '/api/route', handler: (await import('./api/route.js')).default };
 const elevation = { chemin: '/api/elevation', handler: (await import('./api/elevation.js')).default };
 const weather = { chemin: '/api/weather', handler: (await import('./api/weather.js')).default };
+const journeyWeather = { chemin: '/api/journey-weather',
+  handler: (await import('./api/journey-weather.js')).default };
 
 const A = { lat: -20.88, lng: 55.45 }, B = { lat: -20.94, lng: 55.58 };
 const demain = Date.now() + 86400000;
@@ -355,7 +357,9 @@ const geomOK = { routes: [{ distanceMeters: 1000, duration: '120s', staticDurati
   legs: [] }] };
 for (const mod of [['route', route, { origin: A, destination: B }],
                    ['elevation', elevation, { points: [[-20.88, 55.45]] }],
-                   ['weather', weather, { observations: [{ lat: 0, lng: 0, passageTimeMs: passage }] }]]) {
+                   ['weather', weather, { observations: [{ lat: 0, lng: 0, passageTimeMs: passage }] }],
+                   ['journey-weather', journeyWeather,
+                    { observations: [{ lat: 0, lng: 0, passageTimeMs: passage }] }]]) {
   const [nom, m, corps] = mod;
   {
     const r = await appeler(m, corps, rep(geomOK), { entetes: { origin: 'https://ailleurs.example' } });
@@ -383,6 +387,91 @@ for (const mod of [['route', route, { origin: A, destination: B }],
     chk(`${nom} — corps annoncé trop volumineux refusé`,
       r.status === 413 && r.vuParFetch.length === 0, String(r.status));
   }
+}
+
+/* ══════════════ /api/journey-weather (V0.2) ══════════════
+   Quatrième endpoint, donc quatrième surface facturable et quatrième chemin
+   par lequel une donnée inventée pourrait entrer. Il est descriptif par
+   contrat : ce banc éprouve que la réponse ne porte AUCUN verdict. */
+console.log('\n== api/journey-weather.js (V0.2) ==');
+const VARS_JOURNEY = ['temperature_2m', 'precipitation', 'cloud_cover', 'visibility',
+  'wind_speed_10m', 'wind_gusts_10m', 'wind_direction_10m',
+  'direct_normal_irradiance_instant', 'weather_code'];
+const UNITES_JOURNEY = { temperature_2m: '°C', precipitation: 'mm', cloud_cover: '%',
+  visibility: 'm', wind_speed_10m: 'km/h', wind_gusts_10m: 'km/h', wind_direction_10m: '°',
+  direct_normal_irradiance_instant: 'W/m²', weather_code: 'wmo code' };
+function blocJourney(passageMs, valeurs = {}) {
+  const heure = new Date(passageMs).toISOString().slice(0, 13) + ':00';
+  const hourly = { time: [heure] };
+  for (const v of VARS_JOURNEY) hourly[v] = [valeurs[v] !== undefined ? valeurs[v] : 1];
+  return { hourly, hourly_units: { ...UNITES_JOURNEY } };
+}
+{
+  const r = await appeler(journeyWeather,
+    { observations: [{ lat: -21.17, lng: 55.29, passageTimeMs: passage }] },
+    rep(blocJourney(passage, { temperature_2m: 26.4, cloud_cover: 40, wind_gusts_10m: 55 })));
+  chk('journey-weather nominal — 200 et attribution CC BY',
+    r.status === 200 && /Open-Meteo\.com \(CC BY 4\.0\)/.test(r.corps?.attribution || ''),
+    r.corps?.attribution);
+  const z = r.corps?.resultats?.[0] || {};
+  chk('journey-weather nominal — les neuf variables demandées sont remontées',
+    z.status === 'ok' && z.temperature === 26.4 && z.cloudCover === 40 && z.windGusts === 55
+    && Number.isFinite(z.windDirection) && Number.isFinite(z.directNormalIrradiance)
+    && Number.isFinite(z.visibility) && Number.isFinite(z.windSpeed)
+    && Number.isFinite(z.precipitation) && Number.isFinite(z.weatherCode), z.status);
+  chk('journey-weather nominal — heure de validité et heure de passage renvoyées',
+    typeof z.instantValidTime === 'string' && typeof z.passageTime === 'string'
+    && z.deltaTimeMinutes === 0, `${z.instantValidTime} · Δ${z.deltaTimeMinutes} min`);
+  chk('journey-weather nominal — provenance nommée',
+    z.provider === 'open-meteo' && typeof z.fetchedAt === 'string', z.provider);
+  // Le contrat du produit : cette couche DÉCRIT, elle ne conclut pas.
+  const interdits = Object.keys(z).filter((k) => /score|risk|risque|danger|level|niveau|verdict|eblou/i.test(k));
+  chk('journey-weather — aucun champ de verdict dans la réponse',
+    interdits.length === 0, interdits.join(',') || 'aucun');
+  chk('journey-weather — aucune note transformée en conclusion',
+    /descriptive/i.test(r.corps?.note || '') && !/dangereux|gênant|éblouissant/i.test(JSON.stringify(r.corps)),
+    r.corps?.note);
+}
+{
+  const brut = blocJourney(passage);
+  brut.hourly_units.wind_gusts_10m = 'm/s';   // Open-Meteo peut servir une autre unité
+  const r = await appeler(journeyWeather,
+    { observations: [{ lat: -21.17, lng: 55.29, passageTimeMs: passage }] }, rep(brut));
+  const z = r.corps?.resultats?.[0] || {};
+  chk('journey-weather unité inattendue — variable annulée, jamais convertie au hasard',
+    z.windGusts === null && z.status === 'partial', `${z.windGusts} · ${z.status}`);
+  chk('journey-weather unité inattendue — avertissement explicite',
+    (z.warnings || []).some((w) => /unité inattendue pour wind_gusts_10m/.test(w)),
+    (z.warnings || [])[0]);
+}
+{
+  const loin = passage + 6 * 3600000;
+  const r = await appeler(journeyWeather,
+    { observations: [{ lat: -21.17, lng: 55.29, passageTimeMs: loin }] }, rep(blocJourney(passage)));
+  const z = r.corps?.resultats?.[0] || {};
+  chk('journey-weather échéance trop lointaine — statut inconnu, aucune valeur',
+    z.status === 'unknown' && z.temperature === undefined,
+    `${z.status} · Δ${z.deltaTimeMinutes} min`);
+}
+for (const [nom, o] of [['latitude hors bornes', { lat: 91, lng: 0, passageTimeMs: passage }],
+                        ['longitude nulle', { lat: 0, lng: null, passageTimeMs: passage }],
+                        ['heure absente', { lat: 0, lng: 0 }]]) {
+  const r = await appeler(journeyWeather, { observations: [o] }, rep({}));
+  chk(`journey-weather ${nom} — refusée avant tout appel facturé`,
+    r.status === 400 && r.vuParFetch.length === 0, String(r.status));
+}
+{
+  const trop = Array.from({ length: 19 }, () => ({ lat: 0, lng: 0, passageTimeMs: passage }));
+  const r = await appeler(journeyWeather, { observations: trop }, rep({}));
+  chk('journey-weather au-delà du plafond — refusé avant tout appel facturé',
+    r.status === 400 && r.vuParFetch.length === 0, String(r.status));
+}
+{
+  const r = await appeler(journeyWeather,
+    { observations: [{ lat: 0, lng: 0, passageTimeMs: passage }, { lat: 1, lng: 1, passageTimeMs: passage }] },
+    rep([blocJourney(passage)]));
+  chk('journey-weather forme inattendue — refus explicite plutôt qu’alignement au hasard',
+    r.status === 502, String(r.status));
 }
 
 console.log(`\n${ok} contrôle(s) PASS, ${ko} ÉCHEC.`);
