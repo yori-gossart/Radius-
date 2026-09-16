@@ -7,7 +7,7 @@
 <title>RADIUS — Journey + Stationary</title>
 <style>
 :root{--bg:#10151B;--panel:#19202A;--panel2:#141A22;--edge:#2A3441;--ink:#ECF1F6;--muted:#8290A3;--sky:#81ADD2;--amber:#FFB43A;--ok:#5FC2A8;--bad:#FF7557;--mono:ui-monospace,SFMono-Regular,Menlo,monospace;--sans:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 var(--sans)}body{padding-bottom:max(28px,env(safe-area-inset-bottom))}.wrap{max-width:620px;margin:auto;padding:0 16px}header{padding:22px 0 15px;border-bottom:1px solid var(--edge);margin-bottom:18px}.eyebrow{font:11px/1.3 var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}h1{margin:6px 0 3px;font-size:28px;line-height:1.08}.sub{margin:0;color:var(--muted);font-size:14px}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0}.tab{border:1px solid var(--edge);background:var(--panel2);color:var(--ink);padding:12px 8px;border-radius:10px;font-weight:700}.tab.active{background:var(--sky);border-color:var(--sky);color:#081018}.card{background:var(--panel);border:1px solid var(--edge);border-radius:13px;padding:16px;margin:0 0 14px}.card h2{font-size:20px;margin:0 0 5px}.card h3{font-size:17px;margin:0 0 8px}.note{font-size:13px;color:var(--muted);margin:0}.field{margin:0 0 14px}label{display:block;font:11px/1.3 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}input,select{width:100%;background:var(--panel2);color:var(--ink);border:1px solid var(--edge);border-radius:9px;padding:12px 12px;font:16px/1.2 var(--sans);outline:none}input:focus,select:focus{border-color:var(--sky);box-shadow:0 0 0 3px #81add226}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stack{display:grid;gap:8px}.btn{width:100%;border:0;border-radius:9px;padding:13px 14px;background:var(--sky);color:#071017;font-weight:800;font-size:16px}.btn.secondary{background:transparent;color:var(--ink);border:1px solid var(--edge)}.btn.amber{background:var(--amber);color:#1C1202}.btn.small{padding:10px 12px;font-size:14px}.btn:disabled{opacity:.45}.check{display:flex;align-items:center;gap:9px;margin:4px 0 15px}.check input{width:auto}.status{font:12px/1.45 var(--mono);color:var(--muted);min-height:18px;margin:10px 0 0}.status.err{color:var(--bad)}.status.ok{color:var(--ok)}.hidden{display:none!important}.summary{display:grid;gap:9px}.summary .phase{border-left:3px solid var(--sky);background:var(--panel2);padding:12px 13px;border-radius:9px}.summary .phase.stationary{border-left-color:var(--ok)}.summary .phase.return{border-left-color:var(--amber)}.phase b{display:block;font-size:16px}.phase span{display:block;color:var(--muted);font-size:13px;margin-top:2px}.timeline{display:grid;gap:8px;margin-top:10px}.point{border-top:1px solid var(--edge);padding-top:10px;display:grid;grid-template-columns:72px 1fr;gap:10px}.time{font:14px/1.4 var(--mono);color:var(--sky)}.point p{margin:0 0 4px;font-size:14px}.metrics{font:12px/1.45 var(--mono);color:var(--muted)}.sun{color:var(--amber)}.section-title{font:11px/1.3 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:18px 0 8px}.compass{display:grid;grid-template-columns:110px 1fr;gap:14px;align-items:center}.dial{width:110px;height:110px;border:1px solid var(--edge);border-radius:50%;position:relative;background:var(--panel2)}.dial:before{content:"N";position:absolute;top:7px;left:50%;transform:translateX(-50%);font:12px var(--mono);color:var(--sky)}.needle{position:absolute;left:53px;top:17px;width:4px;height:44px;border-radius:4px;background:var(--amber);transform-origin:2px 38px}.compass .big{font:28px/1.1 var(--mono);margin:0 0 5px}.live{font-size:14px;margin:0}.attrib{font:10px/1.5 var(--mono);color:var(--muted);margin:12px 0 0}.warn{border:1px solid #ffb43a55;background:#ffb43a0d;color:#eecb8e;border-radius:9px;padding:10px 12px;font-size:13px;margin:10px 0}.pill{display:inline-block;padding:3px 8px;border:1px solid var(--edge);border-radius:999px;font:10px var(--mono);color:var(--muted);margin-right:4px}.footer{font-size:12px;color:var(--muted);padding:6px 0 20px}details{border-top:1px solid var(--edge);margin-top:12px;padding-top:8px}summary{cursor:pointer;color:var(--muted);font:11px var(--mono);text-transform:uppercase;letter-spacing:.1em}pre{white-space:pre-wrap;word-break:break-word;font:11px/1.5 var(--mono);color:var(--muted)}@media(max-width:430px){.row{grid-template-columns:1fr}.compass{grid-template-columns:90px 1fr}.dial{width:90px;height:90px}.needle{left:43px;top:12px;height:38px;transform-origin:2px 33px}.point{grid-template-columns:64px 1fr}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 var(--sans)}body{padding-bottom:max(28px,env(safe-area-inset-bottom))}.wrap{max-width:620px;margin:auto;padding:0 16px}header{padding:22px 0 15px;border-bottom:1px solid var(--edge);margin-bottom:18px}.eyebrow{font:11px/1.3 var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}h1{margin:6px 0 3px;font-size:28px;line-height:1.08}.sub{margin:0;color:var(--muted);font-size:14px}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0}.tab{border:1px solid var(--edge);background:var(--panel2);color:var(--ink);padding:12px 8px;border-radius:10px;font-weight:700}.tab.active{background:var(--sky);border-color:var(--sky);color:#081018}.card{background:var(--panel);border:1px solid var(--edge);border-radius:13px;padding:16px;margin:0 0 14px}.card h2{font-size:20px;margin:0 0 5px}.card h3{font-size:17px;margin:0 0 8px}.note{font-size:13px;color:var(--muted);margin:0}.field{margin:0 0 14px}label{display:block;font:11px/1.3 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}input,select{width:100%;background:var(--panel2);color:var(--ink);border:1px solid var(--edge);border-radius:9px;padding:12px 12px;font:16px/1.2 var(--sans);outline:none}input:focus,select:focus{border-color:var(--sky);box-shadow:0 0 0 3px #81add226}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stack{display:grid;gap:8px}.btn{width:100%;border:0;border-radius:9px;padding:13px 14px;background:var(--sky);color:#071017;font-weight:800;font-size:16px}.btn.secondary{background:transparent;color:var(--ink);border:1px solid var(--edge)}.btn.amber{background:var(--amber);color:#1C1202}.btn.small{padding:10px 12px;font-size:14px}.btn:disabled{opacity:.45}.check{display:flex;align-items:center;gap:9px;margin:4px 0 15px}.check input{width:auto}.status{font:12px/1.45 var(--mono);color:var(--muted);min-height:18px;margin:10px 0 0}.status.err{color:var(--bad)}.status.ok{color:var(--ok)}.hidden{display:none!important}.summary{display:grid;gap:9px}.summary .phase{border-left:3px solid var(--sky);background:var(--panel2);padding:12px 13px;border-radius:9px}.summary .phase.stationary{border-left-color:var(--ok)}.summary .phase.return{border-left-color:var(--amber)}.phase b{display:block;font-size:16px}.phase span{display:block;color:var(--muted);font-size:13px;margin-top:2px}.timeline{display:grid;gap:8px;margin-top:10px}.point{border-top:1px solid var(--edge);padding-top:10px;display:grid;grid-template-columns:72px 1fr;gap:10px}.time{font:14px/1.4 var(--mono);color:var(--sky)}.point p{margin:0 0 4px;font-size:14px}.metrics{font:12px/1.45 var(--mono);color:var(--muted)}.sun{color:var(--amber)}.section-title{font:11px/1.3 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:18px 0 8px}.compass{display:grid;grid-template-columns:110px 1fr;gap:14px;align-items:center}.dial{width:110px;height:110px;border:1px solid var(--edge);border-radius:50%;position:relative;background:var(--panel2)}.dial:before{content:"N";position:absolute;top:7px;left:50%;transform:translateX(-50%);font:12px var(--mono);color:var(--sky)}.needle{position:absolute;left:53px;top:17px;width:4px;height:44px;border-radius:4px;background:var(--amber);transform-origin:2px 38px}.compass .big{font:22px/1.15 var(--mono);margin:0 0 3px}.live{font-size:14px;margin:0}.attrib{font:10px/1.5 var(--mono);color:var(--muted);margin:12px 0 0}.warn{border:1px solid #ffb43a55;background:#ffb43a0d;color:#eecb8e;border-radius:9px;padding:10px 12px;font-size:13px;margin:10px 0}.pill{display:inline-block;padding:3px 8px;border:1px solid var(--edge);border-radius:999px;font:10px var(--mono);color:var(--muted);margin-right:4px}.footer{font-size:12px;color:var(--muted);padding:6px 0 20px}details{border-top:1px solid var(--edge);margin-top:12px;padding-top:8px}summary{cursor:pointer;color:var(--muted);font:11px var(--mono);text-transform:uppercase;letter-spacing:.1em}pre{white-space:pre-wrap;word-break:break-word;font:11px/1.5 var(--mono);color:var(--muted)}@media(max-width:430px){.row{grid-template-columns:1fr}.compass{grid-template-columns:76px 1fr}.compass .big{font:19px/1.15 var(--mono)}.dial{width:90px;height:90px}.needle{left:43px;top:12px;height:38px;transform-origin:2px 33px}.point{grid-template-columns:64px 1fr}}
 </style>
 </head>
 <body>
@@ -75,6 +75,7 @@
       <button class="btn secondary" id="compassBtn">Activer la boussole</button>
     </div>
     <div id="stationaryStatus" class="status"></div>
+    <p id="gpsQualite" class="note hidden"></p>
   </div>
 
   <div class="card hidden" id="liveCard">
@@ -82,11 +83,14 @@
     <div class="compass">
       <div class="dial"><div class="needle" id="needle"></div></div>
       <div>
-        <p class="big" id="heading">—°</p>
-        <p class="live sun" id="liveSun">Orientation en attente</p>
-        <p class="note" id="compassQuality">La boussole complète le mode fixe ; sur route, RADIUS privilégie le cap du trajet/GPS.</p>
+        <p class="big" id="heading">En attente</p>
+        <p class="note" id="headingQuoi">Direction vers laquelle pointe le haut du téléphone.</p>
+        <p class="live sun" id="liveSun">Oriente le téléphone pour situer le Soleil.</p>
+        <p class="note" id="liveSunNote"></p>
       </div>
     </div>
+    <p class="note" id="compassQuality">La boussole complète le mode fixe ; sur route, RADIUS privilégie le cap du trajet/GPS.</p>
+    <details><summary>Détails techniques</summary><pre id="compassTech">Aucune mesure d’orientation reçue.</pre></details>
   </div>
 
   <div class="card hidden" id="stationaryForecast">
@@ -101,10 +105,11 @@
 
 <script type="module">
 import { routeSamples, stationarySamples, solar, sunRelativeLabel, compassHeadingFromEvent, signedDelta,
-  fetchBorne, DELAI_ROUTE_MS, DELAI_METEO_MS, DELAI_GEOCODE_MS } from './journey-core.mjs';
+  fetchBorne, DELAI_ROUTE_MS, DELAI_METEO_MS, DELAI_GEOCODE_MS,
+  directionLisible, qualitePosition, PRECISION_TERRAIN_M } from './journey-core.mjs';
 
 const $ = (id) => document.getElementById(id);
-const state = { originPoint:null, stationaryPoint:null, stationarySamples:null, stationaryWx:null, heading:null, compassAbsolute:false, compassStarted:false, lastTimelineHeading:null };
+const state = { originPoint:null, stationaryPoint:null, stationarySamples:null, stationaryWx:null, heading:null, compassAbsolute:false, compassStarted:false, compassSource:null, lastTimelineHeading:null };
 const fmtTime = new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'});
 const fmtDate = new Intl.DateTimeFormat('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'});
 const fmtKm = (m) => `${(Number(m||0)/1000).toFixed(Number(m||0)>=10000?0:1)} km`;
@@ -139,7 +144,7 @@ function pointHtml(sample,w,headingOverride=null){const sun=solar(sample.passage
 function phaseCard(title,cls,from,to,meta){return `<div class="phase ${cls||''}"><b>${esc(title)} · ${fmtTime.format(new Date(from))} → ${fmtTime.format(new Date(to))}</b><span>${esc(meta)}</span></div>`}
 function detailCard(title,samples,wx,cls=''){return `<div class="card"><div class="section-title">${esc(cls)}</div><h2>${esc(title)}</h2><div class="timeline">${samples.map((s,i)=>pointHtml(s,wx?.[i])).join('')}</div><p class="attrib">Weather data by Open-Meteo.com (CC BY 4.0)</p></div>`}
 
-$('originGps').onclick=async()=>{setStatus($('journeyStatus'),'Recherche de la position…');try{const p=await gps();state.originPoint=p;$('origin').value=`Ma position (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})`;$('origin').dataset.gps='1';setStatus($('journeyStatus'),`Position capturée · précision ≈ ${Math.round(p.accuracy)} m`,'ok')}catch(e){setStatus($('journeyStatus'),e.message,'err')}};
+$('originGps').onclick=async()=>{setStatus($('journeyStatus'),'Recherche de la position…');try{const p=await gps();state.originPoint=p;$('origin').value=`Ma position (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})`;$('origin').dataset.gps='1';const q=qualitePosition(p.accuracy);setStatus($('journeyStatus'),`Position capturée · ${q.texte}`,q.fiable?'ok':'err')}catch(e){setStatus($('journeyStatus'),e.message,'err')}};
 $('origin').addEventListener('input',()=>{if(!$('origin').value.startsWith('Ma position')){$('origin').dataset.gps='0';state.originPoint=null}});
 
 $('calculate').onclick=async()=>{
@@ -194,16 +199,81 @@ async function planStationary(){setStatus($('stationaryStatus'),'Position en cou
   if(!Array.isArray(resultats)||resultats.length!==samples.length){resultats=samples.map(()=>null)}
   state.stationarySamples=samples;state.stationaryWx=resultats;renderStationaryTimeline();
   $('stationaryForecast').classList.remove('hidden');$('liveCard').classList.remove('hidden');updateLiveSun();
+  // La précision n'est jamais masquée, et une position trop floue ne bloque
+  // rien : c'est en marchant qu'on découvre que le GPS dérive. On le dit.
+  const q=qualitePosition(p.accuracy);
+  $('gpsQualite').textContent=q.texte;
+  $('gpsQualite').className=q.fiable?'note':'warn';
+  $('gpsQualite').classList.remove('hidden');
   setStatus($('stationaryStatus'),meteoErreur
     ?`Point fixé sans la météo — ${meteoErreur} La course du Soleil reste calculée.`
-    :`Point fixé · précision GPS ≈ ${Math.round(p.accuracy)} m`,
-    meteoErreur?'err':'ok')}catch(e){setStatus($('stationaryStatus'),e.message,'err')}}
+    :`Point fixé · ${q.texte}`,
+    meteoErreur||!q.fiable?'err':'ok')}catch(e){setStatus($('stationaryStatus'),e.message,'err')}}
 $('stationaryGps').onclick=planStationary;
 
-function updateLiveSun(){if(!state.stationaryPoint)return;const sun=solar(Date.now(),state.stationaryPoint.lat,state.stationaryPoint.lng);$('liveSun').textContent=`${sunRelativeLabel(state.heading,sun)} · élév. ${sun.elevation.toFixed(1)}° · az. ${sun.azimuth.toFixed(0)}°`;if(Number.isFinite(state.heading))$('heading').textContent=`${Math.round(state.heading)}°`}
+/* Niveau 1 : des mots. Niveau 3 : les chiffres, sous « Détails techniques ».
+   Rien ne disparaît — la phase reste une phase de mesure, et un relevé
+   impossible à reconstituer est un relevé perdu. */
+function updateLiveSun(){
+  if(Number.isFinite(state.heading))$('heading').textContent=directionLisible(state.heading);
+  if(!state.stationaryPoint){$('compassTech').textContent=orientationTech(null);return}
+  const sun=solar(Date.now(),state.stationaryPoint.lat,state.stationaryPoint.lng);
+  // Sous l'horizon, il n'y a rien à situer : le dire franchement vaut mieux
+  // qu'un « Soleil derrière à gauche » qui laisserait croire à une exposition.
+  const couche=sun.elevation<=-0.833;
+  if(couche){
+    $('liveSun').textContent='Soleil couché';
+    $('liveSunNote').textContent='Aucune exposition solaire actuellement.';
+  }else if(!Number.isFinite(state.heading)){
+    $('liveSun').textContent='Soleil levé';
+    $('liveSunNote').textContent='Active la boussole pour savoir de quel côté il se trouve.';
+  }else{
+    $('liveSun').textContent=sunRelativeLabel(state.heading,sun);
+    $('liveSunNote').textContent='Par rapport à la direction que tu regardes.';
+  }
+  $('compassTech').textContent=orientationTech(sun);
+}
+function orientationTech(sun){
+  const l=[];
+  l.push(Number.isFinite(state.heading)
+    ? `Cap téléphone ${state.heading.toFixed(1)}° · ${directionLisible(state.heading)}`
+    : 'Cap téléphone — aucune mesure reçue');
+  l.push(`Orientation ${state.compassStarted
+    ? (state.compassAbsolute ? 'absolue (référencée au nord)' : 'relative/estimée (pas un vrai nord magnétique)')
+    : 'non activée'}`
+    + (state.compassSource?` · source ${state.compassSource}`:''));
+  if(sun){
+    l.push(`Soleil azimut ${sun.azimuth.toFixed(2)}° · élévation ${sun.elevation.toFixed(2)}°`);
+    if(Number.isFinite(state.heading)){
+      l.push(`Écart cap→Soleil ${signedDelta(state.heading,sun.azimuth).toFixed(1)}°`
+        + ' (positif = à droite)');
+    }
+    l.push('Élévation réfractée, identique au moteur d’index.html.');
+  }else{
+    l.push('Soleil — aucun point fixe capturé.');
+  }
+  const p=state.stationaryPoint;
+  if(p){
+    l.push(`Point ${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`
+      + ` · précision ${Number.isFinite(p.accuracy)?Math.round(p.accuracy)+' m':'inconnue'}`
+      + ` · seuil relevé fiable ${PRECISION_TERRAIN_M} m`);
+  }
+  l.push('Sur route, le cap de référence reste celui du trajet/GPS, jamais l’orientation du téléphone.');
+  return l.join('\n');
+}
 setInterval(updateLiveSun,30000);
 
-function onOrientation(e){const h=compassHeadingFromEvent(e);if(!h)return;if(state.compassAbsolute&&!h.absolute)return;state.heading=h.heading;state.compassAbsolute=h.absolute;$('heading').textContent=`${Math.round(h.heading)}°`;$('needle').style.transform=`rotate(${h.heading}deg)`;$('compassQuality').textContent=h.absolute?'Orientation absolue fournie par le téléphone.':'Orientation relative/estimée : à utiliser comme aide, pas comme cap routier de référence.';updateLiveSun();if(state.stationarySamples&&(!Number.isFinite(state.lastTimelineHeading)||Math.abs(signedDelta(state.lastTimelineHeading,h.heading))>=5))renderStationaryTimeline()}
+function onOrientation(e){
+  const h=compassHeadingFromEvent(e);if(!h)return;
+  if(state.compassAbsolute&&!h.absolute)return;   // une relative n'écrase jamais une absolue
+  state.heading=h.heading;state.compassAbsolute=h.absolute;state.compassSource=h.source;
+  $('heading').textContent=directionLisible(h.heading);
+  $('needle').style.transform=`rotate(${h.heading}deg)`;
+  $('compassQuality').textContent=h.absolute
+    ?'Orientation absolue, référencée au nord par le téléphone. Sur route, RADIUS garde le cap du trajet/GPS.'
+    :'Orientation relative/estimée : ce n’est pas un vrai nord magnétique. À utiliser comme aide, jamais comme cap de référence.';
+  updateLiveSun();
+  if(state.stationarySamples&&(!Number.isFinite(state.lastTimelineHeading)||Math.abs(signedDelta(state.lastTimelineHeading,h.heading))>=5))renderStationaryTimeline()}
 async function startCompass(){try{if(typeof DeviceOrientationEvent==='undefined')throw new Error('Capteur d’orientation non disponible dans ce navigateur.');if(typeof DeviceOrientationEvent.requestPermission==='function'){const permission=await DeviceOrientationEvent.requestPermission();if(permission!=='granted')throw new Error('Permission de boussole refusée.')}window.addEventListener('deviceorientationabsolute',onOrientation,true);window.addEventListener('deviceorientation',onOrientation,true);state.compassStarted=true;$('liveCard').classList.remove('hidden');setStatus($('stationaryStatus'),'Boussole activée. Oriente le haut du téléphone vers la direction regardée.','ok')}catch(e){setStatus($('stationaryStatus'),e.message,'err')}}
 $('compassBtn').onclick=startCompass;
 

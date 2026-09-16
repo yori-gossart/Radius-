@@ -367,6 +367,39 @@ magnétique, et une orientation absolue déjà obtenue n'est jamais écrasée pa
 relative. Sans capteur, sans permission ou sans navigateur compatible, la page
 continue de fonctionner : la boussole est un supplément, pas une dépendance.
 
+**L'écran de la boussole suit les trois niveaux, comme le reste.** Correction du
+16 septembre 2026, sur un relevé de terrain : « 150° » ne se lit pas sur une
+terrasse.
+
+- niveau 1 : **le mot avant le chiffre** — « Sud-Est · 150° », huit directions
+  cardinales. Au-delà de huit, on prétendrait une finesse que ni le
+  magnétomètre du téléphone ni sa calibration ne garantissent ;
+- l'écran dit **ce que cette direction représente** : celle vers laquelle pointe
+  le haut du téléphone, pas celle d'une route ;
+- Soleil sous l'horizon : **« Soleil couché — aucune exposition solaire
+  actuellement »**, et aucune direction n'est suggérée. « Soleil derrière à
+  gauche » à 22 h laisserait croire à une exposition qui n'existe pas ;
+- Soleil levé : sa position **relativement à l'orientation regardée** — droit
+  devant, devant à droite, à droite, derrière à droite, droit derrière —
+  toujours descriptive, jamais une gêne vécue ;
+- niveau 3 : azimut, élévation, cap brut, écart cap→Soleil, type d'orientation
+  absolue ou relative, source du capteur, point GPS et sa précision. **Rien ne
+  disparaît.**
+
+Les bornes de `sunRelativeLabel()` — 15, 45, 110, 160 — n'ont pas bougé ce
+jour-là : **seuls les mots ont changé**, « Soleil sur le côté droite » n'étant
+pas du français. Ce sont des découpes de géométrie, pas des seuils de risque :
+elles ne lisent pas `T` et ne produisent aucun `level`.
+
+**La précision du GPS se dit toujours, et ne bloque jamais.** Même décision, même
+relevé : le téléphone annonçait 2 km. Un relevé de terrain rapproche une
+observation d'un point ; à 2 km près ce n'est plus le bon point, et le relevé ne
+vaut rien. Au-delà de `PRECISION_TERRAIN_M` = 100 m, l'interface affiche
+**« position trop imprécise pour un relevé terrain fiable »** — sans masquer le
+chiffre et **sans empêcher le prototype de tourner**, puisque c'est justement en
+marchant qu'on découvre que le GPS dérive. Ce seuil qualifie une **donnée**, pas
+le ciel : il ne lit pas `T` et ne s'y mélange jamais.
+
 **Les règles figées s'appliquent aussi à cette branche.** `journey.html` n'a
 aucun `fetch()` nu : les trois appels passent par `fetchBorne()`. La météo y est
 passive au sens fort — sa panne dégrade son propre statut, dit pourquoi, et
@@ -378,8 +411,18 @@ réseau d'abord : `journey-core.mjs` porte la position solaire, et servi depuis
 le cache sous une page fraîche il ferait relever le terrain avec un moteur qu'on
 croit remplacé.
 
-Bancs : `test-journey-v02.mjs` (fonctions pures, accord solaire, échéances) et
-`test-journey-navigateur.mjs` (30 contrôles Playwright sur la page réelle).
+**La clé Google n'est pas dans l'environnement Preview.** Constaté le
+16 septembre 2026 : `/api/journey-weather` répond 200 — Open-Meteo ne demande
+aucune clé — tandis que `/api/route` répond **503**, statut qu'une seule branche
+de `api/route.js` émet, celle où `process.env.GOOGLE_MAPS_API_KEY` est absent.
+C'est une affaire de configuration Vercel, pas de code : la variable est portée
+par l'environnement Production et n'a jamais été étendue à Preview. Ne jamais
+créer une seconde clé ni écrire la clé dans le dépôt pour contourner cela.
+
+Bancs : `test-journey-v02.mjs` (fonctions pures, accord solaire, échéances,
+directions cardinales, qualité GPS) et `test-journey-navigateur.mjs`
+(53 contrôles Playwright sur la page réelle, dont le GPS à 2 km et le Soleil
+couché).
 
 ## La règle de parole
 

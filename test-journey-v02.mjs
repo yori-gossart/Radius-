@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   bearing, signedDelta, solar, routeSamples, stationarySamples,
   sunRelativeLabel, compassHeadingFromEvent, fetchBorne,
+  cardinal, directionLisible, qualitePosition, PRECISION_TERRAIN_M,
 } from './journey-core.mjs';
 
 const near = (a,b,t=1e-6) => Math.abs(a-b) <= t;
@@ -30,9 +31,24 @@ assert.ok(samples.every((s) => near(s.heading,90,0.01)), 'cap est conservé');
 
 const stationary = stationarySamples({lat:-21.03,lng:55.72}, 0, 3_600_000, 5);
 assert.deepEqual(stationary.map((s)=>s.passageTimeMs), [0,900000,1800000,2700000,3600000]);
-assert.equal(sunRelativeLabel(90,{azimuth:100,elevation:15}), 'Soleil presque dans l’axe devant');
-assert.equal(sunRelativeLabel(90,{azimuth:170,elevation:15}), 'Soleil sur le côté droite');
+assert.equal(sunRelativeLabel(90,{azimuth:100,elevation:15}), 'Soleil droit devant');
+assert.equal(sunRelativeLabel(90,{azimuth:170,elevation:15}), 'Soleil à droite');
 assert.equal(sunRelativeLabel(90,{azimuth:100,elevation:-2}), 'Soleil sous l’horizon');
+// Les bornes n'ont pas bougé le 16 septembre : seuls les mots ont changé.
+assert.equal(sunRelativeLabel(90,{azimuth:105,elevation:15}), 'Soleil droit devant', '15° reste « droit devant »');
+assert.equal(sunRelativeLabel(90,{azimuth:106,elevation:15}), 'Soleil devant à droite', '16° bascule');
+assert.equal(sunRelativeLabel(90,{azimuth:135,elevation:15}), 'Soleil devant à droite', '45° reste « devant à »');
+assert.equal(sunRelativeLabel(90,{azimuth:136,elevation:15}), 'Soleil à droite', '46° bascule');
+assert.equal(sunRelativeLabel(90,{azimuth:200,elevation:15}), 'Soleil à droite', '110° reste « à »');
+assert.equal(sunRelativeLabel(90,{azimuth:201,elevation:15}), 'Soleil derrière à droite', '111° bascule');
+assert.equal(sunRelativeLabel(90,{azimuth:251,elevation:15}), 'Soleil droit derrière', '161° bascule');
+assert.equal(sunRelativeLabel(90,{azimuth:60,elevation:15}), 'Soleil devant à gauche', 'le côté gauche est dit gauche');
+assert.equal(sunRelativeLabel(90,{azimuth:44,elevation:15}), 'Soleil à gauche', '46° d’écart : au-delà de « devant »');
+// Aucune phrase ne conclut à une gêne vécue, quel que soit l'angle.
+for (let az = 0; az < 360; az += 3) {
+  const t = sunRelativeLabel(90, { azimuth: az, elevation: 4 });
+  assert.ok(!/éblou|gên|dangereu|fort/i.test(t), `phrase descriptive à ${az}° : ${t}`);
+}
 
 assert.deepEqual(compassHeadingFromEvent({webkitCompassHeading:275}), {heading:275,absolute:true,source:'webkitCompassHeading'});
 assert.deepEqual(compassHeadingFromEvent({alpha:90,absolute:true}), {heading:270,absolute:true,source:'deviceorientationabsolute'});
@@ -148,6 +164,69 @@ for (const variable of ['cloud_cover', 'visibility', 'direct_normal_irradiance_i
   'wind_gusts_10m', 'precipitation']) {
   assert.ok(!new RegExp(`${variable}[^\\n]*[<>]=?\\s*\\d`).test(codeWx),
     `aucun seuil numérique appliqué à ${variable}`);
+}
+
+/* ── La direction se dit en mots (16 septembre 2026) ── */
+assert.equal(directionLisible(150), 'Sud-Est · 150°', 'l’exemple demandé');
+assert.equal(cardinal(0), 'Nord');
+assert.equal(cardinal(360), 'Nord', 'le tour complet revient au Nord');
+assert.equal(cardinal(359), 'Nord', 'juste avant le Nord');
+assert.equal(cardinal(22), 'Nord');
+assert.equal(cardinal(23), 'Nord-Est', 'la bascule est à 22,5°');
+assert.equal(cardinal(45), 'Nord-Est');
+assert.equal(cardinal(90), 'Est');
+assert.equal(cardinal(135), 'Sud-Est');
+assert.equal(cardinal(180), 'Sud');
+assert.equal(cardinal(225), 'Sud-Ouest');
+assert.equal(cardinal(270), 'Ouest');
+assert.equal(cardinal(315), 'Nord-Ouest');
+assert.equal(cardinal(-45), 'Nord-Ouest', 'un cap négatif est ramené dans le tour');
+assert.equal(cardinal(NaN), null, 'aucune direction inventée sans mesure');
+assert.equal(cardinal(undefined), null);
+assert.equal(directionLisible(NaN), 'Direction inconnue');
+// Les huit secteurs couvrent le tour sans trou ni chevauchement.
+const vus = new Set();
+for (let d = 0; d < 360; d += 0.5) vus.add(cardinal(d));
+assert.equal(vus.size, 8, 'huit directions, ni plus ni moins');
+assert.ok(!vus.has(null), 'aucun angle du tour ne reste sans mot');
+
+/* ── La précision GPS se dit, et ne bloque rien ── */
+assert.equal(PRECISION_TERRAIN_M, 100, 'le seuil demandé');
+const flou = qualitePosition(2000);
+assert.equal(flou.fiable, false);
+assert.equal(flou.metres, 2000, 'le chiffre n’est jamais masqué');
+assert.match(flou.texte, /2000 m/, 'la précision reste lisible');
+assert.match(flou.texte, /trop imprécise pour un relevé terrain fiable/,
+  'le relevé est déclaré non fiable, en clair');
+const net = qualitePosition(18);
+assert.equal(net.fiable, true);
+assert.match(net.texte, /18 m/);
+assert.ok(!/trop imprécise/.test(net.texte), 'une position nette n’est pas dénigrée');
+assert.equal(qualitePosition(100).fiable, true, '100 m exactement reste acceptable');
+assert.equal(qualitePosition(101).fiable, false, 'au-delà de 100 m, non fiable');
+const inconnu = qualitePosition(undefined);
+assert.equal(inconnu.fiable, false);
+assert.equal(inconnu.metres, null);
+assert.match(inconnu.texte, /inconnue/, 'une précision absente n’est pas prise pour bonne');
+// Ces valeurs qualifient une DONNÉE, jamais le ciel.
+assert.ok(!/level|score|high|moderate/i.test(JSON.stringify([flou, net, inconnu])),
+  'la qualité GPS ne produit aucun niveau de risque');
+
+/* ── L'écran principal est humain, le brut descend au niveau 3 ── */
+{
+  const j = fs.readFileSync(new URL('./journey.html', import.meta.url), 'utf8');
+  assert.ok(/id="compassTech"/.test(j), 'un bloc de détails techniques existe');
+  assert.ok(/Direction vers laquelle pointe le haut du téléphone/.test(j),
+    'l’écran explique ce que la direction représente');
+  assert.ok(/Soleil couché/.test(j) && /Aucune exposition solaire actuellement/.test(j),
+    'le Soleil sous l’horizon est dit en clair');
+  assert.ok(/directionLisible\(/.test(j), 'le cap principal passe par les mots');
+  // Le gros chiffre nu a disparu de l'écran principal.
+  assert.ok(!/\$\('heading'\)\.textContent=`\$\{Math\.round/.test(j.replace(/\s/g, '')),
+    'plus de « 150° » seul comme information principale');
+  assert.ok(/qualitePosition\(/.test(j), 'la précision GPS est qualifiée');
+  assert.ok(/pas un vrai nord magnétique/.test(j),
+    'une orientation relative n’est jamais présentée comme un nord magnétique');
 }
 
 console.log('RADIUS V0.2 Journey + Stationary — Soleil aligné sur index.html, échéances et règles figées OK');

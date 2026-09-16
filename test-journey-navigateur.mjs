@@ -100,6 +100,18 @@ const nav = await playwright.chromium.launch();
 const MAINTENANT = new Date(args.maintenant || '2026-12-21T15:40:00+04:00').getTime();
 const ctx = await nav.newContext({ timezoneId: 'Indian/Reunion', locale: 'fr-FR',
   permissions: ['geolocation'], geolocation: { latitude: A.lat, longitude: A.lng } });
+/* Playwright ne donne aucune précision : sans ce shim, `accuracy` vaut 0 et le
+   cas du fondateur — 2 km de flou sur le terrain — resterait intestable. */
+const precisionGps = { m: 12 };
+await ctx.addInitScript(() => {
+  const vrai = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
+  navigator.geolocation.getCurrentPosition = (ok, ko, opts) => vrai((p) => ok({
+    coords: { latitude: p.coords.latitude, longitude: p.coords.longitude,
+      accuracy: window.__precisionGps, altitude: null, altitudeAccuracy: null,
+      heading: null, speed: null },
+    timestamp: p.timestamp,
+  }), ko, opts);
+});
 await ctx.addInitScript((m) => {
   const V = Date, dec = m - V.now();
   const D = function (...a) { return a.length ? new V(...a) : new V(V.now() + dec); };
@@ -107,6 +119,7 @@ await ctx.addInitScript((m) => {
   window.Date = D;
 }, MAINTENANT);
 const page = await ctx.newPage();
+await page.addInitScript(() => { window.__precisionGps = 12; });
 const erreursJS = [];
 page.on('pageerror', (e) => erreursJS.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error') erreursJS.push('console: ' + m.text()); });
@@ -220,8 +233,9 @@ chk('le bouton n’est pas resté figé',
 chk('aucun résultat trompeur n’est affiché',
   await page.evaluate(() => document.getElementById('journeyResult').classList.contains('hidden')));
 
-console.log('\n== Point fixe ==');
+console.log('\n== Point fixe · GPS net ==');
 await page.goto(base + '/journey.html');
+await page.evaluate(() => { window.__precisionGps = 12; });
 await page.click('#tabStationary');
 chk('l’onglet point fixe s’ouvre', await page.isVisible('#stationaryGps'));
 await page.selectOption('#stationaryDuration', '240');
@@ -234,30 +248,135 @@ chk('la course du Soleil est échantillonnée dans le temps', pts.length >= 3, p
 chk('sans boussole, aucun cap n’est inventé',
   !(await page.$$eval('#stationaryTimeline .point .sun', (n) => n.map((x) => x.textContent)))
     .some((t) => /cap \d+°/.test(t)));
+chk('une position nette affiche sa précision sans alarme',
+  /12 m/.test(await page.textContent('#gpsQualite'))
+  && !/trop imprécise/.test(await page.textContent('#gpsQualite')),
+  await page.textContent('#gpsQualite'));
 chk('le point fixe fonctionne sans capteur d’orientation', erreursJS.length === 0,
   erreursJS.slice(0, 2).join(' | '));
 
-/* La boussole : Chromium ne fournit pas de capteur. On éprouve la conversion
-   et l'affichage en injectant un vrai DeviceOrientationEvent. */
+console.log('\n== Point fixe · GPS imprécis (le cas relevé sur le A55) ==');
+await page.goto(base + '/journey.html');
+await page.evaluate(() => { window.__precisionGps = 2000; });
+await page.click('#tabStationary');
+await page.click('#stationaryGps');
+await page.waitForSelector('#stationaryForecast:not(.hidden)', { timeout: 30000 }).catch(() => {});
+const qualite = await page.textContent('#gpsQualite');
+chk('la précision n’est pas masquée', /2000 m/.test(qualite), qualite);
+chk('l’imprécision est dite en clair',
+  /trop imprécise pour un relevé terrain fiable/.test(qualite), qualite);
+chk('elle est signalée visuellement, pas noyée dans une note',
+  (await page.getAttribute('#gpsQualite', 'class')).includes('warn'),
+  await page.getAttribute('#gpsQualite', 'class'));
+chk('le prototype fonctionne quand même',
+  await page.isVisible('#stationaryForecast')
+  && (await page.$$eval('#stationaryTimeline .point', (n) => n.length)) >= 3,
+  `${await page.$$eval('#stationaryTimeline .point', (n) => n.length)} instants`);
+
+console.log('\n== Boussole · un écran humain ==');
 await page.click('#compassBtn');
-await page.evaluate(() => {
+const envoyer = (alpha, absolute, nom) => page.evaluate(([a, abs, n]) => {
+  const e = new Event(n);
+  Object.defineProperty(e, 'alpha', { value: a });
+  Object.defineProperty(e, 'absolute', { value: abs });
+  window.dispatchEvent(e);
+}, [alpha, absolute, nom]);
+
+// α = 210 → cap 150° → Sud-Est, l'exemple demandé.
+await envoyer(210, true, 'deviceorientationabsolute');
+const cap = await page.textContent('#heading');
+chk('la direction est dite en mots avant le chiffre', cap.trim() === 'Sud-Est · 150°', cap.trim());
+chk('l’écran explique ce que cette direction représente',
+  /haut du téléphone/.test(await page.textContent('#headingQuoi')),
+  await page.textContent('#headingQuoi'));
+chk('une orientation absolue est annoncée comme telle',
+  /absolue/i.test(await page.textContent('#compassQuality')),
+  (await page.textContent('#compassQuality')).slice(0, 60));
+
+const solPrincipal = await page.textContent('#liveSun');
+const solNote = await page.textContent('#liveSunNote');
+const jour = await page.evaluate(() => solar(Date.now(), state.stationaryPoint.lat,
+  state.stationaryPoint.lng).elevation > -0.833).catch(() => null);
+chk('le Soleil est situé par rapport à l’orientation, en mots',
+  /^Soleil (droit devant|devant à (droite|gauche)|à (droite|gauche)|derrière à (droite|gauche)|droit derrière|couché)$/
+    .test(solPrincipal.trim()), `${solPrincipal.trim()} — ${solNote.trim()}`);
+chk('aucun angle n’encombre la ligne principale',
+  !/[0-9]+°/.test(solPrincipal), solPrincipal.trim());
+chk('aucune conclusion sur une gêne vécue',
+  !/éblou|gên|dangereu/i.test(solPrincipal + solNote));
+
+const tech = await page.textContent('#compassTech');
+chk('l’azimut brut est conservé au niveau 3', /Soleil azimut \d+\.\d+°/.test(tech),
+  (tech.match(/Soleil azimut[^\n]*/) || ['(absent)'])[0]);
+chk('l’élévation brute est conservée au niveau 3', /élévation -?\d+\.\d+°/.test(tech));
+chk('le type d’orientation est conservé au niveau 3',
+  /Orientation absolue \(référencée au nord\)/.test(tech),
+  (tech.match(/Orientation[^\n]*/) || ['(absent)'])[0]);
+chk('le cap brut est conservé au niveau 3', /Cap téléphone 150\.0°/.test(tech),
+  (tech.match(/Cap téléphone[^\n]*/) || ['(absent)'])[0]);
+chk('la précision GPS et son seuil sont conservés au niveau 3',
+  /précision 2000 m · seuil relevé fiable 100 m/.test(tech),
+  (tech.match(/Point [^\n]*/) || ['(absent)'])[0]);
+chk('le niveau 3 rappelle que la boussole ne fait pas le cap routier',
+  /cap de référence reste celui du trajet\/GPS/.test(tech));
+
+// Une orientation relative ne doit jamais passer pour un nord magnétique.
+await page.goto(base + '/journey.html');
+await page.evaluate(() => { window.__precisionGps = 12; });
+await page.click('#tabStationary');
+await page.click('#stationaryGps');
+await page.waitForSelector('#liveCard:not(.hidden)', { timeout: 30000 }).catch(() => {});
+await page.click('#compassBtn');
+await envoyer(90, false, 'deviceorientation');
+chk('une orientation relative est affichée, mais désignée comme telle',
+  /Ouest · 270°/.test(await page.textContent('#heading'))
+  && /pas un vrai nord magnétique/.test(await page.textContent('#compassQuality')),
+  (await page.textContent('#compassQuality')).slice(0, 70));
+chk('le niveau 3 la nomme relative',
+  /relative\/estimée/.test(await page.textContent('#compassTech')));
+await envoyer(210, true, 'deviceorientationabsolute');
+await envoyer(90, false, 'deviceorientation');
+chk('une relative n’écrase jamais une absolue déjà obtenue',
+  /Sud-Est · 150°/.test(await page.textContent('#heading')),
+  await page.textContent('#heading'));
+
+console.log('\n== Soleil couché ==');
+// 21 décembre 23:00 locale : le Soleil est largement sous l'horizon.
+const nuit = await ctx.newPage();
+await nuit.addInitScript(() => { window.__precisionGps = 12; });
+await nuit.addInitScript((m) => {
+  const V = Date, dec = m - V.now();
+  const D = function (...a) { return a.length ? new V(...a) : new V(V.now() + dec); };
+  D.prototype = V.prototype; D.now = () => V.now() + dec; D.parse = V.parse; D.UTC = V.UTC;
+  window.Date = D;
+}, new Date('2026-12-21T23:00:00+04:00').getTime());
+await nuit.goto(base + '/journey.html');
+await nuit.click('#tabStationary');
+await nuit.click('#stationaryGps');
+await nuit.waitForSelector('#liveCard:not(.hidden)', { timeout: 30000 }).catch(() => {});
+await nuit.click('#compassBtn');
+await nuit.evaluate(() => {
   const e = new Event('deviceorientationabsolute');
-  Object.defineProperty(e, 'alpha', { value: 90 });
+  Object.defineProperty(e, 'alpha', { value: 210 });
   Object.defineProperty(e, 'absolute', { value: true });
   window.dispatchEvent(e);
 });
-chk('une orientation absolue est affichée comme telle',
-  /270°/.test(await page.textContent('#heading'))
-  && /absolue/i.test(await page.textContent('#compassQuality')),
-  `${await page.textContent('#heading')} · ${(await page.textContent('#compassQuality')).slice(0, 50)}`);
-await page.evaluate(() => {
-  const e = new Event('deviceorientation');
-  Object.defineProperty(e, 'alpha', { value: 10 });
-  Object.defineProperty(e, 'absolute', { value: false });
-  window.dispatchEvent(e);
-});
-chk('une orientation relative ne remplace jamais une absolue',
-  /270°/.test(await page.textContent('#heading')), await page.textContent('#heading'));
+chk('de nuit, l’écran dit « Soleil couché »',
+  (await nuit.textContent('#liveSun')).trim() === 'Soleil couché',
+  await nuit.textContent('#liveSun'));
+chk('et qu’il n’y a aucune exposition',
+  /Aucune exposition solaire actuellement/.test(await nuit.textContent('#liveSunNote')),
+  await nuit.textContent('#liveSunNote'));
+chk('aucune direction du Soleil n’est suggérée de nuit',
+  !/(devant|derrière|à droite|à gauche)/i.test(
+    (await nuit.textContent('#liveSun')) + (await nuit.textContent('#liveSunNote'))));
+chk('mais l’élévation négative reste lisible au niveau 3',
+  /élévation -\d+\.\d+°/.test(await nuit.textContent('#compassTech')),
+  (( await nuit.textContent('#compassTech')).match(/Soleil azimut[^\n]*/) || ['(absent)'])[0]);
+await nuit.close();
+
+chk('aucune erreur JavaScript sur tout le banc', erreursJS.length === 0,
+  erreursJS.slice(0, 3).join(' | '));
 
 await nav.close();
 serveur.close();

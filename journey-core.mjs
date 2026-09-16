@@ -199,6 +199,11 @@ export function stationarySamples(point, startMs, endMs, count = 5) {
   });
 }
 
+/** Où est le Soleil par rapport à la direction regardée. Les bornes — 15, 45,
+    110, 160 — découpent une GÉOMÉTRIE ; ce ne sont pas des seuils de risque,
+    elles ne lisent pas `T` et ne produisent aucun `level`. Seuls les mots ont
+    changé le 16 septembre 2026 : « Soleil sur le côté droite » n'est pas du
+    français, et le conducteur dit « à droite ». Les angles, eux, sont intacts. */
 export function sunRelativeLabel(heading, sun) {
   if (!sun || !Number.isFinite(sun.elevation) || !Number.isFinite(sun.azimuth)) return 'Soleil indisponible';
   if (sun.elevation <= -0.833) return 'Soleil sous l’horizon';
@@ -206,11 +211,57 @@ export function sunRelativeLabel(heading, sun) {
   const delta = signedDelta(Number(heading), sun.azimuth);
   const side = delta >= 0 ? 'droite' : 'gauche';
   const a = Math.abs(delta);
-  if (a <= 15) return 'Soleil presque dans l’axe devant';
+  if (a <= 15) return 'Soleil droit devant';
   if (a <= 45) return `Soleil devant à ${side}`;
-  if (a <= 110) return `Soleil sur le côté ${side}`;
+  if (a <= 110) return `Soleil à ${side}`;
   if (a <= 160) return `Soleil derrière à ${side}`;
-  return 'Soleil presque dans l’axe arrière';
+  return 'Soleil droit derrière';
+}
+
+/* ---- dire une direction en mots ----
+   « 150° » ne se lit pas au volant ni sur une terrasse. Huit points suffisent :
+   au-delà, on prétendrait une finesse que ni la boussole du téléphone ni sa
+   calibration ne garantissent. Le chiffre reste affiché à côté du mot, et
+   l'azimut brut descend dans les détails techniques — rien ne disparaît. */
+const CARDINAUX = ['Nord', 'Nord-Est', 'Est', 'Sud-Est',
+                   'Sud', 'Sud-Ouest', 'Ouest', 'Nord-Ouest'];
+
+export function cardinal(deg) {
+  const d = Number(deg);
+  if (!Number.isFinite(d)) return null;
+  return CARDINAUX[Math.round(mod360(d) / 45) % 8];
+}
+
+/** « Sud-Est · 150° » — le mot d'abord, le chiffre ensuite. */
+export function directionLisible(deg) {
+  const mot = cardinal(deg);
+  if (!mot) return 'Direction inconnue';
+  return `${mot} · ${Math.round(mod360(Number(deg)))}°`;
+}
+
+/* ---- qualité de la position ----
+   Un relevé de terrain rapproche une observation d'un point. À 2 km près, le
+   point n'est plus celui qu'on croit et le relevé ne vaut rien — mais le
+   prototype doit continuer de tourner : c'est justement en marchant qu'on
+   découvre que le GPS dérive. On le dit donc, sans rien bloquer et sans
+   masquer le chiffre.
+   PRECISION_TERRAIN_M qualifie une DONNÉE, pas le ciel : ce n'est pas un seuil
+   scientifique, il ne lit pas `T` et ne s'y mélange jamais. */
+export const PRECISION_TERRAIN_M = 100;
+
+export function qualitePosition(accuracyM) {
+  const a = Number(accuracyM);
+  if (!Number.isFinite(a) || a < 0) {
+    return { metres: null, fiable: false,
+      texte: 'Précision GPS inconnue — relevé terrain non fiable.' };
+  }
+  const m = Math.round(a);
+  if (a > PRECISION_TERRAIN_M) {
+    return { metres: m, fiable: false,
+      texte: `Précision GPS ≈ ${m} m — position trop imprécise pour un relevé `
+        + 'terrain fiable.' };
+  }
+  return { metres: m, fiable: true, texte: `Précision GPS ≈ ${m} m.` };
 }
 
 export function compassHeadingFromEvent(event) {
