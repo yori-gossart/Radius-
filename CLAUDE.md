@@ -446,10 +446,29 @@ panne, pas comme deux horloges. La règle est donc :
 La direction est toujours annoncée comme celle du **haut du téléphone**, jamais
 celle d'un véhicule.
 
-**La rose de direction.** Vue de dessus, Nord en haut, l'observateur au centre.
-Ce n'est pas une carte : aucune route, aucune distance. Elle situe deux choses —
-la direction du haut du téléphone et l'azimut du Soleil — plus le secteur relatif
-mis en évidence. SVG natif, aucune bibliothèque.
+**La rose de direction est égocentrique par défaut.** Décision du 17 septembre
+2026, sur la lecture de l'écran : Nord en haut obligeait à se représenter
+mentalement une rotation — on lisait « à droite » pendant que le marqueur était
+dessiné à gauche. Deux référentiels, une bascule :
+
+- **Vue face à moi** (défaut) : le haut du radar est **toujours devant soi**, la
+  flèche du téléphone est verticale et ne bouge plus, et ce sont le Soleil et les
+  points cardinaux qui tournent autour du centre. L'en-tête dit **↑ DEVANT MOI** ;
+- **Vue Nord** : l'ancienne représentation, Nord fixe en haut, flèche mobile.
+
+**Une seule projection, `angleRose()`**, décide de tout : en vue face elle vaut
+`signedDelta(cap, azimut)` — 0 devant, +90 à droite, ±180 derrière, −90 à gauche —
+et en vue Nord l'azimut absolu. Cardinaux, graduations, secteur, flèche et Soleil
+y passent tous ; plus aucun tracé n'est en azimut absolu. **Rien de scientifique
+ne change** : même azimut solaire, même cap, seule la projection à l'écran
+diffère, et le banc vérifie que changer de vue ne touche ni l'azimut, ni le cap,
+ni le secteur annoncé.
+
+**Sans cap mesuré, la vue face retombe au Nord** et le dit. Il n'y a pas de
+« devant » sans boussole, et en inventer un serait un relevé faux.
+
+Ce n'est pas une carte : aucune route, aucune distance. SVG natif, aucune
+bibliothèque.
 
 L'élévation n'a pas d'axe : une vue de dessus n'en a pas. Elle est écrite en
 chiffres au-dessus du marqueur, et sous l'horizon le marqueur **change d'aspect**
@@ -469,8 +488,13 @@ deux soleils. Les bornes 15 / 45 / 110 / 160 sont inchangées.
 `Number.isFinite(0)` vaut vrai : un téléphone sans magnétomètre émet un événement
 d'orientation dont `alpha` est `null`, et il devenait un cap de 0° — plein Nord —
 annoncé comme une mesure **absolue**. `compassHeadingFromEvent()` lit désormais
-strictement. C'est le même piège que la latitude nulle devenue l'équateur ; il
-faut le chercher partout où une donnée capteur entre.
+strictement. C'est le même piège que la latitude nulle devenue l'équateur.
+
+**Ce piège est revenu le lendemain**, dans `vueEffectiveRose()` : `state.heading`
+vaut `null` tant que la boussole n'a rien donné, et « pas de cap » redevenait un
+cap de 0° — le radar aurait annoncé « ↑ DEVANT MOI » en montrant du Nord. Seul le
+test l'a vu. **Toute lecture d'une donnée capteur passe par `nombreStrict()`**, et
+le contrôle appartient au banc, pas à la vigilance.
 
 **Les règles figées s'appliquent aussi à cette branche.** `journey.html` n'a
 aucun `fetch()` nu : les trois appels passent par `fetchBorne()`. La météo y est
@@ -495,9 +519,15 @@ Bancs : `test-journey-v02.mjs` (fonctions pures, accord solaire, échéances,
 directions cardinales, qualité GPS, fenêtre de prévision, échantillonnage du
 point fixe) et `test-journey-navigateur.mjs` (84 contrôles Playwright sur la
 page réelle, dont le GPS à 2 km, le Soleil couché, l'instant précis champ par
-champ, les dates passées ou trop lointaines qui ne partent jamais à l'API, et la
-rose croisée contre le moteur importé côté Node — `page.evaluate` ne voit pas la
-portée d'un module ES, un banc qui l'ignore s'auto-approuve en silence).
+champ, les dates passées ou trop lointaines qui ne partent jamais à l'API, les
+deux référentiels de la rose, et le tout croisé contre le moteur importé côté
+Node — `page.evaluate` ne voit pas la portée d'un module ES, un banc qui l'ignore
+s'auto-approuve en silence).
+
+**Une garde écrite trop large ne garde rien.** `/\bT\./i` — insensible à la
+casse — attrapait le « t. » final de n'importe quel mot accentué français :
+« connaît. » suffisait à la déclencher, et l'assertion ne mesurait donc rien.
+Une garde qui cherche un nom de code se lit sans le drapeau `i`.
 
 ## La règle de parole
 

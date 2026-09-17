@@ -473,19 +473,28 @@ const rose = () => page.evaluate(() => {
   const fleche = svg.querySelector('#roseFleche');
   const textes = [...svg.querySelectorAll('text')].map((t) => t.textContent.trim());
   const secteur = svg.querySelector('path[fill="#FFB43A"]');
+  const cardinaux = {};
+  for (const t of svg.querySelectorAll('text[data-cardinal]')) {
+    cardinaux[t.dataset.cardinal] = { angle: Number(t.dataset.angle),
+      x: Number(t.getAttribute('x')), y: Number(t.getAttribute('y')) };
+  }
   return {
     viewBox: svg.getAttribute('viewBox'),
     aria: svg.getAttribute('aria-label'),
     azimut: soleil && Number(soleil.dataset.azimut),
+    angleSoleil: soleil && Number(soleil.dataset.angle),
     couche: soleil && soleil.dataset.couche === '1',
     cap: fleche && Number(fleche.dataset.cap),
+    angleFleche: fleche && Number(fleche.dataset.angle),
+    vue: svg.querySelector('#roseCardinaux') && svg.querySelector('#roseCardinaux').dataset.vue,
+    cardinaux,
     textes,
     secteurMisEnEvidence: !!secteur,
   };
 });
 const r1 = await rose();
 chk('la rose est un SVG 200×200', r1.viewBox === '0 0 200 200', r1.viewBox);
-chk('le Nord est affiché en haut, avec les trois autres points',
+chk('les quatre points cardinaux sont dessinés',
   ['N', 'E', 'S', 'O'].every((c) => r1.textes.includes(c)), r1.textes.join(' '));
 chk('la flèche porte le cap du téléphone', r1.cap === 150, String(r1.cap));
 chk('le Soleil est placé selon son azimut',
@@ -530,8 +539,7 @@ chk('l’instant représenté est exactement celui saisi',
   new Date(e1.instantMs).toISOString() === '2026-12-22T13:45:00.000Z',
   new Date(e1.instantMs).toISOString());
 chk('et la légende le dit',
-  /22\/12.*17:45/.test(await page.textContent('#roseQuand'))
-  && /flèche = orientation actuelle/.test(await page.textContent('#roseQuand')),
+  /22\/12.*17:45/.test(await page.textContent('#roseQuand')),
   await page.textContent('#roseQuand'));
 
 // Le niveau 3 conserve tout.
@@ -546,6 +554,84 @@ for (const [quoi, motif] of [
   ['source capteur', /source deviceorientationabsolute/],
   ['instant représenté', /Rose : instant représenté .*heure d’observation choisie/],
 ]) chk(`niveau 3 — ${quoi}`, motif.test(tech1), (tech1.match(motif) || ['(absent)'])[0]);
+
+console.log('\n== Rose · vue égocentrique par défaut ==');
+chk('la vue « face à moi » est active par défaut',
+  (await page.getAttribute('#vueFace', 'class')).includes('active')
+  && !(await page.getAttribute('#vueNord', 'class')).includes('active'),
+  `${await page.getAttribute('#vueFace', 'class')} | ${await page.getAttribute('#vueNord', 'class')}`);
+chk('le haut du radar est annoncé comme DEVANT MOI',
+  (await page.textContent('#roseHaut')).trim() === '↑ DEVANT MOI',
+  await page.textContent('#roseHaut'));
+chk('le radar est bien en référentiel égocentrique', r1.vue === 'face', String(r1.vue));
+chk('la flèche est verticale et ne bouge plus', r1.angleFleche === 0,
+  `angle écran ${r1.angleFleche}° pour un cap de ${r1.cap}°`);
+// L'angle écran du Soleil est exactement signedDelta(cap, azimut).
+const attenduAngle = noyau.signedDelta(e1.cap, sun1.azimuth);
+chk('l’angle écran du Soleil est l’écart cap→azimut',
+  Math.abs(r1.angleSoleil - attenduAngle) < 0.05,
+  `dessiné ${r1.angleSoleil}° · attendu ${attenduAngle.toFixed(1)}°`);
+chk('le Nord a tourné : il n’est plus en haut',
+  Math.abs(r1.cardinaux.N.angle - noyau.signedDelta(e1.cap, 0)) < 0.05
+  && Math.abs(r1.cardinaux.N.y - 100) > 1,
+  `N à ${r1.cardinaux.N.angle}° écran, y=${r1.cardinaux.N.y}`);
+chk('l’azimut solaire brut est inchangé par la vue',
+  Math.abs(r1.azimut - sun1.azimuth) < 0.05,
+  `${r1.azimut}° · moteur ${sun1.azimuth.toFixed(1)}°`);
+chk('la légende dit que le haut du radar est devant',
+  /haut du radar = devant toi/.test(await page.textContent('#roseQuand')),
+  await page.textContent('#roseQuand'));
+chk('l’orientation actuelle est étiquetée sous le radar',
+  /Orientation actuelle : Sud-Est · 150°/.test(await page.textContent('#headingLigne')),
+  (await page.textContent('#headingLigne')).trim());
+
+console.log('\n== Rose · bascule vers la vue Nord ==');
+await page.click('#vueNord');
+const rn = await rose();
+chk('la vue Nord devient active',
+  (await page.getAttribute('#vueNord', 'class')).includes('active') && rn.vue === 'nord');
+chk('le Nord revient en haut',
+  rn.cardinaux.N.angle === 0 && rn.cardinaux.N.y < 100 && rn.cardinaux.S.y > 100,
+  `N à ${rn.cardinaux.N.angle}° écran, y=${rn.cardinaux.N.y} · S y=${rn.cardinaux.S.y}`);
+chk('la flèche reprend le cap du téléphone', rn.angleFleche === 150, String(rn.angleFleche));
+chk('le Soleil est dessiné à son azimut absolu',
+  Math.abs(rn.angleSoleil - rn.azimut) < 0.05,
+  `${rn.angleSoleil}° · azimut ${rn.azimut}°`);
+chk('le haut du radar est annoncé comme le Nord',
+  (await page.textContent('#roseHaut')).trim() === '↑ NORD',
+  await page.textContent('#roseHaut'));
+// LE POINT QUI COMPTE : changer de vue ne change AUCUNE donnée.
+chk('changer de vue ne touche ni l’azimut ni le cap',
+  rn.azimut === r1.azimut && rn.cap === r1.cap,
+  `azimut ${r1.azimut}→${rn.azimut} · cap ${r1.cap}→${rn.cap}`);
+chk('ni le secteur annoncé en toutes lettres',
+  (await page.textContent('#liveSun')).trim() === dit,
+  await page.textContent('#liveSun'));
+await page.click('#vueFace');
+chk('le retour en vue face à moi remet la flèche en haut',
+  (await rose()).angleFleche === 0);
+
+console.log('\n== Rose · l’heure simulée met à jour les deux vues ==');
+for (const vue of ['#vueFace', '#vueNord']) {
+  await page.click(vue);
+  await page.fill('#statTime', '06:30');
+  await page.click('#prevoir');
+  await attendreRose('06:30');
+  const matin = await rose();
+  const em = await etatRose();
+  const sm = noyau.solar(em.instantMs, em.lat, em.lng);
+  chk(`${vue} — le Soleil suit l’heure simulée`,
+    Math.abs(matin.azimut - sm.azimuth) < 0.05,
+    `dessiné ${matin.azimut}° · moteur à 06:30 ${sm.azimuth.toFixed(1)}°`);
+  chk(`${vue} — et l’angle écran suit le référentiel`,
+    Math.abs(matin.angleSoleil - (vue === '#vueFace'
+      ? noyau.signedDelta(em.cap, sm.azimuth) : noyau.mod360(sm.azimuth))) < 0.05,
+    `${matin.angleSoleil}°`);
+}
+await page.click('#vueFace');
+await page.fill('#statTime', '17:45');
+await page.click('#prevoir');
+await attendreRose('17:45');
 
 console.log('\n== Rose · Soleil sous l’horizon ==');
 await page.fill('#statTime', '23:30');

@@ -426,3 +426,35 @@ export function echantillonsPointFixe(point, debutMs, horizonMinutes) {
   }
   return stationarySamples(point, debut, debut + m * 60000, nombreEchantillons(m));
 }
+
+/* ---- les deux référentiels de la rose ----
+   Nord en haut oblige à se représenter mentalement une rotation : on lit
+   « à droite » pendant que le marqueur est dessiné à gauche de l'écran. La vue
+   par défaut est donc ÉGOCENTRIQUE — le haut du radar est toujours devant soi,
+   la flèche ne bouge plus, et ce sont le Soleil et les points cardinaux qui
+   tournent autour du centre quand le téléphone tourne.
+
+   Rien de scientifique ne change : c'est exactement le même azimut solaire et
+   le même cap qu'avant, seule la projection à l'écran diffère.
+     vue 'face' : angle écran = signedDelta(cap, azimut) — 0 devant, +90 à
+                  droite, ±180 derrière, -90 à gauche ;
+     vue 'nord' : angle écran = azimut absolu. */
+export const VUES_ROSE = ['face', 'nord'];
+
+/** Sans cap mesuré il n'y a pas de « devant » : la vue face retombe sur le
+    Nord plutôt que d'inventer une référence.
+    Lecture STRICTE : `state.heading` vaut `null` tant que la boussole n'a rien
+    donné, et `Number(null)` vaut 0. Lu sans précaution, « pas de cap » devenait
+    un cap de 0° : le radar aurait annoncé « ↑ DEVANT MOI » en montrant du Nord.
+    C'est le même piège que l'alpha nul du capteur, et que la latitude nulle
+    devenue l'équateur. */
+export function vueEffectiveRose(vue, headingDeg) {
+  return (vue === 'face' && Number.isFinite(nombreStrict(headingDeg))) ? 'face' : 'nord';
+}
+
+export function angleRose(azimutDeg, headingDeg, vue) {
+  const az = nombreStrict(azimutDeg);
+  if (!Number.isFinite(az)) return null;
+  if (vueEffectiveRose(vue, headingDeg) === 'nord') return mod360(az);
+  return signedDelta(nombreStrict(headingDeg), az);
+}

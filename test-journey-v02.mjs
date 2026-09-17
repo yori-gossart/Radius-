@@ -5,7 +5,7 @@ import {
   cardinal, directionLisible, qualitePosition, PRECISION_TERRAIN_M,
   fenetrePrevision, previsionDisponible, nombreEchantillons, echantillonsPointFixe,
   HORIZON_PREVISION_JOURS, secteurRelatif, libelleSecteur, SECTEURS_RELATIFS,
-  pointRose, ROSE_CENTRE, mod360,
+  pointRose, ROSE_CENTRE, mod360, angleRose, vueEffectiveRose, VUES_ROSE,
 } from './journey-core.mjs';
 
 const near = (a,b,t=1e-6) => Math.abs(a-b) <= t;
@@ -490,9 +490,15 @@ assert.equal(ROSE_CENTRE, 100);
   assert.ok(/Jamaislecapd'unvéhicule\./.test(nu.replace(/’/g, "'"))
     || /Jamaislecapd’unvéhicule/.test(nu),
     'la flèche est annoncée comme le haut du téléphone, jamais le cap d’un véhicule');
-  // Aucun seuil ni formule d'éblouissement dans le dessin.
+  // Aucun seuil ni formule d'éblouissement dans le dessin. Le contrôle vise
+  // l'objet T et ses champs, SANS le drapeau « i » : insensible à la casse,
+  // « \bT\. » attrape le « t. » final de n'importe quel mot accentué français
+  // — « connaît. » suffisait à le déclencher, et l'assertion ne mesurait rien.
   const rose = nu.slice(nu.indexOf('functiondessinerRose'), nu.indexOf('functionetiquetteRose'));
-  assert.ok(!/\bT\.|maxElev|maxDelta|score|éblou/i.test(rose),
+  assert.ok(rose.length > 1000, 'le bloc de dessin est bien découpé');
+  assert.ok(!/\bT\.(high|moderate|low|faceDelta|minElev|minZoneMeters|mergeGapMeters)/.test(rose),
+    'la rose ne lit aucun seuil de T');
+  assert.ok(!/maxElev|maxDelta|éblouissement/i.test(rose) && !/\bscore\b/i.test(rose),
     'la rose n’introduit ni seuil ni formule d’éblouissement');
   // Le niveau 3 garde tout ce qui est demandé.
   const iTech = nu.indexOf('functionorientationTech');
@@ -504,6 +510,100 @@ assert.equal(ROSE_CENTRE, 100);
     ['secteur', /secteur\$\{secteurRelatif/], ['absolu/relatif', /absolue\(référencéeaunord\)/],
     ['source capteur', /sourcex?\$?\{?state\.compassSource|compassSource/],
   ]) assert.ok(motif.test(tech), `le niveau 3 conserve ${quoi}`);
+}
+
+/* ── Vue égocentrique : le haut du radar est DEVANT MOI (17 septembre 2026) ──
+   Nord en haut obligeait à se représenter mentalement une rotation : on lisait
+   « à droite » pendant que le marqueur était dessiné à gauche de l'écran.
+   Rien de scientifique ne change ici : même azimut solaire, même cap, seule la
+   projection à l'écran diffère. */
+assert.deepEqual(VUES_ROSE, ['face', 'nord']);
+
+// Les quatre cas de référence, éprouvés sur plusieurs caps pour qu'aucun ne
+// passe par chance.
+for (const cap of [0, 45, 90, 150, 239, 270, 359.5]) {
+  assert.equal(angleRose(cap, cap, 'face'), 0,
+    `cap = azimut solaire → Soleil droit devant (cap ${cap}°)`);
+  assert.equal(angleRose(cap + 90, cap, 'face'), 90,
+    `Soleil à cap+90° → à droite (cap ${cap}°)`);
+  assert.equal(angleRose(cap - 90, cap, 'face'), -90,
+    `Soleil à cap−90° → à gauche (cap ${cap}°)`);
+  assert.equal(Math.abs(angleRose(cap + 180, cap, 'face')), 180,
+    `Soleil à cap+180° → derrière (cap ${cap}°)`);
+}
+
+// Et ce que ces angles donnent À L'ÉCRAN : haut, droite, gauche, bas.
+{
+  const cap = 239, r = 80;
+  const ou = (az) => pointRose(angleRose(az, cap, 'face'), r);
+  const proche = (p, x, y, m) => assert.ok(Math.abs(p.x - x) < 1e-9 && Math.abs(p.y - y) < 1e-9,
+    `${m} — attendu (${x}, ${y}), obtenu (${p.x.toFixed(3)}, ${p.y.toFixed(3)})`);
+  proche(ou(cap), 100, 20, 'Soleil dans l’axe : EN HAUT du radar');
+  proche(ou(cap + 90), 180, 100, 'Soleil à cap+90° : à DROITE');
+  proche(ou(cap - 90), 20, 100, 'Soleil à cap−90° : à GAUCHE');
+  proche(ou(cap + 180), 100, 180, 'Soleil à l’opposé : EN BAS');
+  // La flèche ne bouge plus : elle est toujours droit en haut.
+  proche(pointRose(angleRose(cap, cap, 'face'), r), 100, 20, 'la flèche reste verticale');
+  // Et c'est bien le monde qui tourne : le Nord se place à −cap.
+  assert.equal(angleRose(0, cap, 'face'), signedDelta(cap, 0),
+    'le Nord tourne autour du centre');
+}
+
+// Le secteur nommé et le secteur dessiné ne peuvent pas se contredire : ils
+// sortent du même angle.
+for (let cap = 0; cap < 360; cap += 13) {
+  for (let az = 0; az < 360; az += 7) {
+    const ecran = angleRose(az, cap, 'face');
+    assert.equal(secteurRelatif(ecran), secteurRelatif(signedDelta(cap, az)),
+      `l’angle écran porte le même secteur — cap ${cap}°, azimut ${az}°`);
+  }
+}
+
+// Vue Nord : l'azimut absolu, inchangé — c'est l'ancienne représentation.
+for (const [az, cap] of [[0, 150], [90, 239], [250.2, 150], [359, 1]]) {
+  assert.equal(angleRose(az, cap, 'nord'), mod360(az),
+    `vue Nord : azimut ${az}° rendu tel quel`);
+}
+assert.equal(angleRose(0, 150, 'nord'), 0, 'en vue Nord, le Nord reste en haut');
+
+// Sans cap mesuré il n'y a pas de « devant » : la vue face retombe au Nord
+// plutôt que d'inventer une référence.
+for (const sansCap of [NaN, null, undefined, 'nord']) {
+  assert.equal(vueEffectiveRose('face', sansCap), 'nord',
+    `sans cap (${String(sansCap)}), la vue face retombe au Nord`);
+  assert.equal(angleRose(250, sansCap, 'face'), 250,
+    'et l’azimut est rendu absolu, pas relatif à un cap inexistant');
+}
+assert.equal(vueEffectiveRose('face', 0), 'face', 'un cap de 0° reste un cap valide');
+assert.equal(vueEffectiveRose('nord', 150), 'nord');
+assert.equal(angleRose(NaN, 150, 'face'), null, 'aucun angle sans azimut');
+
+/* ── Les deux vues dans la page ── */
+{
+  const j = fs.readFileSync(new URL('./journey.html', import.meta.url), 'utf8');
+  const nu = j.replace(/\s/g, '');
+  assert.ok(/id="vueFace"/.test(j) && /id="vueNord"/.test(j), 'la bascule existe');
+  assert.ok(/Vue face à moi/.test(j) && /Vue Nord/.test(j), 'les deux vues sont nommées');
+  assert.ok(/vueRose:'face'/.test(nu), 'la vue égocentrique est celle par défaut');
+  assert.ok(/↑ DEVANT MOI/.test(j), '« ↑ DEVANT MOI » est affiché');
+  assert.ok(/Orientation actuelle :/.test(j), 'l’orientation actuelle est étiquetée');
+  // UNE seule projection : tout passe par ang(), rien ne reste en absolu.
+  const rose = nu.slice(nu.indexOf('functiondessinerRose'), nu.indexOf('functionbasculerVue'));
+  assert.ok(/constang=\(azimut\)=>angleRose\(azimut,state\.heading,state\.vueRose\)/.test(rose),
+    'une seule projection, nommée');
+  for (const brut of ['pointRose(deg,', 'pointRose(cap,', 'pointRose(sun.azimuth,', 'pointRose(d,']) {
+    assert.ok(!rose.includes(brut.replace(/\s/g, '')),
+      `plus aucun tracé en azimut absolu : ${brut}`);
+  }
+  const projections = (rose.match(/ang\(/g) || []).length;
+  assert.ok(projections >= 6,
+    `cardinaux, graduations, secteur, flèche et Soleil passent tous par la projection`
+    + ` — ${projections} appel(s) trouvé(s)`);
+  // Le changement d'heure redessine, dans les deux vues.
+  assert.ok(/functionbasculerVue\(v\)\{[^}]*dessinerRose\(\)/.test(nu),
+    'basculer de vue redessine');
+  assert.ok((nu.match(/dessinerRose\(\)/g) || []).length >= 4,
+    'la rose est redessinée à chaque changement d’heure, d’orientation et de vue');
 }
 
 console.log('RADIUS V0.2 Journey + Stationary — Soleil aligné sur index.html, échéances et règles figées OK');
