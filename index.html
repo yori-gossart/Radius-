@@ -466,7 +466,8 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
    pendant qu'une seconde copie vivait dans journey-core.mjs avait déjà produit
    deux soleils qui divergeaient en silence.
    ═══════════════════════════════════════════════════════════ */
-import { R, D, EARTH, solar, dist, bearing, signedDelta } from './radius-core.mjs';
+import { R, D, EARTH, solar, dist, bearing, signedDelta,
+  pointAtDistance, headingAtDistance, HEADING_HALF_WINDOW } from './radius-core.mjs';
 
 
 /* ═══════════════════════════════════════════════════════════
@@ -475,40 +476,7 @@ import { R, D, EARTH, solar, dist, bearing, signedDelta } from './radius-core.mj
 
 
 
-/** Position interpolée à une distance curviligne donnée sur une polyline. */
-function pointAtDistance(coords, cum, d) {
-  const total = cum[cum.length - 1];
-  const t = Math.max(0, Math.min(total, d));
-  let lo = 0, hi = cum.length - 1;
-  while (lo < hi - 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= t) lo = mid; else hi = mid; }
-  const d0 = cum[lo], d1 = cum[hi];
-  const f = d1 > d0 ? (t - d0) / (d1 - d0) : 0;
-  const [la0, lo0] = coords[lo], [la1, lo1] = coords[hi];
-  return [la0 + (la1 - la0) * f, lo0 + (lo1 - lo0) * f];
-}
 
-/* Le cap se lit sur la géométrie Google détaillée, pas sur les points espacés
-   de 100 m. La corde de 100 m avait deux défauts, mesurés : elle lisse le
-   virage, et surtout elle va de d à d+100, donc elle donne la tangente à
-   d+50 — un retard systématique d'un demi-pas. Sur un rayon de 150 m cela
-   fait 19° d'erreur, à comparer aux 12° qui séparent « de face » du reste.
-
-   Fenêtre symétrique de ±20 m, choisie sur mesure et non au jugé : en dessous
-   le bruit de numérisation des sommets domine, au-dessus on ne gagne plus rien
-   et la fenêtre cesse d'être définie dans une épingle courte. */
-const HEADING_HALF_WINDOW = 20;
-
-function headingAtDistance(coords, cum, d, demi = HEADING_HALF_WINDOW) {
-  if (!coords || coords.length < 2 || !cum || cum.length !== coords.length) return null;
-  const total = cum[cum.length - 1];
-  if (!(total > 0)) return null;
-  // Aux extrémités, on n'utilise que la portion disponible.
-  const a = Math.max(0, d - demi), b = Math.min(total, d + demi);
-  if (b - a < 1e-6) return null;
-  const p = pointAtDistance(coords, cum, a), q = pointAtDistance(coords, cum, b);
-  if (p[0] === q[0] && p[1] === q[1]) return null;
-  return bearing(p[0], p[1], q[0], q[1]);
-}
 
 /* ═══════════════════════════════════════════════════════════
    2 bis. MASQUAGE PAR LE RELIEF

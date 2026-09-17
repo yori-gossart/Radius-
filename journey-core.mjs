@@ -3,37 +3,36 @@
    `solar()`, `bearing()`, `dist()` et `signedDelta()` existe dans le dépôt, et
    c'est celle du moteur calibré d'index.html. Ce fichier les réexporte pour que
    journey.html continue de les importer d'un seul endroit. */
-export { R, D, EARTH, mod360, solar, dist, bearing, signedDelta } from './radius-core.mjs';
-import { R, D, EARTH, mod360, solar, dist, bearing, signedDelta } from './radius-core.mjs';
+export { R, D, EARTH, mod360, solar, dist, bearing, signedDelta,
+  pointAtDistance, headingAtDistance, HEADING_HALF_WINDOW } from './radius-core.mjs';
+import { R, D, EARTH, mod360, solar, dist, bearing, signedDelta,
+  pointAtDistance, headingAtDistance } from './radius-core.mjs';
 
 /** Nom historique de `dist()` dans ce module. Même fonction, même résultat. */
 export const haversine = dist;
 
-function pointAtDistance(coords, target) {
+/* Position ET cap à une distance curviligne, délégués au moteur.
+   Ce fichier portait sa propre interpolation — une TROISIÈME copie — et rendait
+   le cap de la corde du sous-segment. Le moteur, lui, lit le cap sur une
+   fenêtre symétrique de ±20 m, précisément parce que la corde lisse le virage
+   et donne la tangente un demi-pas trop loin : 19° d'erreur sur un rayon de
+   150 m, à comparer aux 12° qui séparent « de face » du reste.
+
+   La fenêtre est tronquée aux bords d'une étape Google ; c'est une limite
+   assumée, et elle reste bien meilleure que la corde. */
+function pointEtCap(coords, target) {
   if (!Array.isArray(coords) || coords.length < 2) return null;
-  const seg = [];
-  let total = 0;
+  const cum = [0];
   for (let i = 1; i < coords.length; i++) {
-    const d = haversine(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]);
-    seg.push(d);
-    total += d;
+    cum.push(cum[i - 1] + dist(coords[i - 1][0], coords[i - 1][1], coords[i][0], coords[i][1]));
   }
-  if (!(total > 0)) return { lat: coords[0][0], lng: coords[0][1], heading: 0 };
-  const wanted = Math.min(total, Math.max(0, target));
-  let acc = 0;
-  for (let i = 0; i < seg.length; i++) {
-    if (acc + seg[i] >= wanted || i === seg.length - 1) {
-      const f = seg[i] > 0 ? (wanted - acc) / seg[i] : 0;
-      const a = coords[i], b = coords[i + 1];
-      return {
-        lat: a[0] + (b[0] - a[0]) * f,
-        lng: a[1] + (b[1] - a[1]) * f,
-        heading: bearing(a[0], a[1], b[0], b[1]),
-      };
-    }
-    acc += seg[i];
-  }
-  return null;
+  const total = cum[cum.length - 1];
+  // Sans longueur, il n'y a pas de cap : on ne rend pas 0°, qui se lirait
+  // comme « plein Nord mesuré ».
+  if (!(total > 0)) return { lat: coords[0][0], lng: coords[0][1], heading: null };
+  const d = Math.min(total, Math.max(0, nombreStrict(target) || 0));
+  const p = pointAtDistance(coords, cum, d);
+  return { lat: p[0], lng: p[1], heading: headingAtDistance(coords, cum, d) };
 }
 
 function sampleFromGeometry(route, departureMs, count) {
@@ -48,7 +47,7 @@ function sampleFromGeometry(route, departureMs, count) {
   const duration = Math.max(0, Number(route?.durationSeconds) || 0);
   return Array.from({ length: count }, (_, i) => {
     const progress = count === 1 ? 0 : i / (count - 1);
-    const p = pointAtDistance(coords, total * progress);
+    const p = pointEtCap(coords, total * progress);
     return p ? {
       ...p,
       progress,
@@ -91,7 +90,7 @@ export function routeSamples(route, departureMs, count = 5) {
         step.coordinates[k][0], step.coordinates[k][1],
       );
     }
-    const p = pointAtDistance(step.coordinates, stepDistance * Math.min(1, Math.max(0, f)));
+    const p = pointEtCap(step.coordinates, stepDistance * Math.min(1, Math.max(0, f)));
     return p ? {
       ...p,
       progress,

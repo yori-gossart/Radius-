@@ -7,6 +7,7 @@ import {
   HORIZON_PREVISION_JOURS, secteurRelatif, libelleSecteur, SECTEURS_RELATIFS,
   pointRose, ROSE_CENTRE, mod360, angleRose, vueEffectiveRose, VUES_ROSE,
   meilleurePosition, resumeAcquisition, DUREE_ACQUISITION_MS, nombreStrict,
+  HEADING_HALF_WINDOW, pointAtDistance as pointMoteur, headingAtDistance,
 } from './journey-core.mjs';
 
 const near = (a,b,t=1e-6) => Math.abs(a-b) <= t;
@@ -706,6 +707,41 @@ assert.deepEqual(meilleurePosition({ accuracy: 0 }, { accuracy: 5 }), { accuracy
   assert.ok(/if\(!Number\.isFinite\(nombreStrict\(c\)\)\)\{/.test(nu),
     'on ne fige pas une mesure absente');
   assert.ok(!/state\.capFige=0/.test(nu), 'aucun cap de 0° posé d’office');
+}
+
+/* ── Journey emploie le cap du moteur, pas celui de la corde (17 sept. 2026) ──
+   journey-core portait sa propre interpolation — une TROISIÈME copie — et
+   rendait le cap de la corde du sous-segment. Le moteur lit le cap sur une
+   fenêtre symétrique de ±20 m, précisément parce que la corde lisse le virage
+   et donne la tangente un demi-pas trop loin. */
+assert.equal(HEADING_HALF_WINDOW, 20, 'la fenêtre du moteur, réexportée telle quelle');
+assert.equal(typeof headingAtDistance, 'function', 'journey a accès au cap local du moteur');
+{
+  const j = fs.readFileSync(new URL('./journey-core.mjs', import.meta.url), 'utf8');
+  assert.ok(/headingAtDistance\(coords, cum, d\)/.test(j),
+    'le cap des échantillons vient du moteur');
+  assert.ok(!/function pointAtDistance\(coords, target\)/.test(j),
+    'journey ne porte plus sa propre interpolation');
+  assert.ok(/heading: null/.test(j),
+    'sans longueur il n’y a pas de cap : on ne rend pas 0°, qui se lirait « plein Nord mesuré »');
+}
+{
+  // Sur une route qui tourne, corde et fenêtre ne disent pas la même chose :
+  // c'est précisément ce qu'on vient de corriger.
+  const geom = [[-21.00, 55.30], [-21.001, 55.3012], [-21.0025, 55.3018],
+    [-21.004, 55.3015], [-21.0055, 55.3002]];
+  const route = { durationSeconds: 600, staticDurationSeconds: 600, trafficFactor: 1,
+    geometry: geom, steps: [{ staticDurationSeconds: 600, coordinates: geom }] };
+  const caps = routeSamples(route, 0, 5).map((x) => x.heading);
+  assert.ok(caps.every((c) => Number.isFinite(c)), 'tous les échantillons portent un cap');
+  assert.ok(caps.some((c, i) => i > 0 && Math.abs(signedDelta(caps[i - 1], c)) > 10),
+    'le cap suit réellement le virage');
+  // Un tronçon rectiligne garde son cap exact : la fenêtre ne dérive pas.
+  const droit = [[0, 0], [0, 0.1]];
+  const r2 = { durationSeconds: 600, staticDurationSeconds: 600, trafficFactor: 1,
+    geometry: droit, steps: [{ staticDurationSeconds: 600, coordinates: droit }] };
+  assert.ok(routeSamples(r2, 0, 5).every((x) => near(x.heading, 90, 0.01)),
+    'sur une ligne droite, la fenêtre rend exactement le cap');
 }
 
 console.log('RADIUS V0.2 Journey + Stationary — Soleil aligné sur index.html, échéances et règles figées OK');

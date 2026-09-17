@@ -417,29 +417,28 @@ async function chargerProduction() {
 
     const step = /^const STEP_METERS = (\d+);/m.exec(js);
     if (!step) throw new Error('STEP_METERS introuvable');
-    const fen = /^const HEADING_HALF_WINDOW = (\d+);/m.exec(js);
-    if (!fen) throw new Error('HEADING_HALF_WINDOW introuvable — index.html est antérieur au cap local');
+    // HEADING_HALF_WINDOW et le cap local vivent dans le cœur commun depuis le
+    // 17 septembre 2026 : on les charge, on ne les recopie pas.
     // dist() et bearing() ne vivent plus dans index.html : elles sont dans le
     // cœur commun, que l'on charge RÉELLEMENT plutôt que d'en recopier une
     // version ici — un audit qui porte sa propre copie n'audite que lui-même.
     const coeur = await import('./radius-core.mjs');
     const morceaux = [
       'const STEP_METERS = ' + step[1] + ';',
-      'const HEADING_HALF_WINDOW = ' + fen[1] + ';',
-      extraireBloc(js, 'pointAtDistance'),
-      extraireBloc(js, 'headingAtDistance'),
       extraireBloc(js, 'resample'),
       extraireBloc(js, 'routeGoogleVersTimeline'),
       'return { dist, bearing, pointAtDistance, headingAtDistance, resample,'
         + ' routeGoogleVersTimeline, STEP_METERS, HEADING_HALF_WINDOW };',
     ];
     const src = morceaux.join('\n\n');
-    PROD.fns = new Function('R', 'D', 'EARTH', 'dist', 'bearing', src)(
-      coeur.R, coeur.D, coeur.EARTH, coeur.dist, coeur.bearing);
+    PROD.fns = new Function('R', 'D', 'EARTH', 'dist', 'bearing',
+      'pointAtDistance', 'headingAtDistance', 'HEADING_HALF_WINDOW', src)(
+      coeur.R, coeur.D, coeur.EARTH, coeur.dist, coeur.bearing,
+      coeur.pointAtDistance, coeur.headingAtDistance, coeur.HEADING_HALF_WINDOW);
     PROD.source = src;
     PROD.empreinte = empreinte(js);
     PROD.stepMeters = +step[1];
-    PROD.capFenetre = +fen[1];
+    PROD.capFenetre = coeur.HEADING_HALF_WINDOW;
     PROD.ok = true;
   } catch (e) {
     PROD.erreur = e.message;

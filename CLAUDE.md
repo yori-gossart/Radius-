@@ -529,6 +529,53 @@ casse — attrapait le « t. » final de n'importe quel mot accentué français 
 « connaît. » suffisait à la déclencher, et l'assertion ne mesurait donc rien.
 Une garde qui cherche un nom de code se lit sans le drapeau `i`.
 
+## Stabilisation — un seul cœur, et ce que Journey ne réutilise pas encore
+
+Branche `radius-stabilization`, 17 septembre 2026.
+
+**Il n'existe qu'une seule copie de la géométrie et de l'astronomie**, dans
+`radius-core.mjs` : `solar()`, `dist()`, `bearing()`, `signedDelta()`,
+`pointAtDistance()`, `headingAtDistance()` et `HEADING_HALF_WINDOW`. Ce sont les
+implémentations d'`index.html`, reprises **mot pour mot** — c'est le moteur
+calibré contre le terrain. `index.html`, `journey-core.mjs` et `route-audit.html`
+les **chargent** ; aucun ne les recopie.
+
+Avant cela, `index.html` et `journey-core.mjs` portaient chacun les leurs, et le
+banc les comparait sur **six cas choisis** où elles s'accordaient à 1e-11. Sur
+vingt mille tirages elles divergeaient : jusqu'à 0,27° d'azimut près du zénith,
+0,004° dans le régime du produit, et 0,2 m de distance parce que l'un prenait
+6 371 008,8 m de rayon terrestre et l'autre 6 371 000. **Six points ne prouvent
+pas une identité.** `test-coeur-commun.mjs` compare désormais le cœur contre la
+version d'avant, extraite de git, sur vingt mille tirages, sans tolérance.
+
+**`index.html` sert son script en module.** C'est la seule façon de partager du
+code sans build. Conséquence pour les bancs : `page.evaluate` ne voit pas la
+portée d'un module, et tout contrôle doit passer par le DOM — ce qui est de toute
+façon plus juste, puisque c'est ce qui prouve que le relevé reste reconstituable.
+
+**Journey emploie désormais le cap du moteur.** Il portait sa propre
+interpolation — une troisième copie — et rendait le cap de la **corde** du
+sous-segment. Il lit maintenant la fenêtre symétrique de ±20 m, celle qui existe
+précisément parce que la corde lisse le virage et donne la tangente un demi-pas
+trop loin.
+
+**Ce que Journey ne réutilise toujours pas, volontairement :**
+
+| Brique | Pourquoi pas encore |
+|---|---|
+| `resample()` / `STEP_METERS` | Journey échantillonne par le **temps**, pas au pas fixe : il prévisualise une sortie, il ne détecte pas de zones. Le pas de 100 m n'a de sens que pour `minZoneMeters` et `mergeGapMeters`. |
+| `analyze()`, `classify()`, `T`, `RANK` | Journey **décrit**, il ne classe pas. L'y brancher ferait entrer des seuils non calibrés dans une page qui s'interdit d'en porter. |
+| Couche relief | Journey n'a aucun relief. La brancher coûterait un appel Elevation par instant simulé, et le laboratoire ne le demande pas. |
+| Épisodes, plan d'annonces, règle de parole | Journey ne parle pas. |
+
+**Un manque identifié, laissé ouvert :** `routeGoogleVersTimeline()` d'`index.html`
+vérifie le raccrochage de Google au réseau routier (`SNAP_MAX_M` = 2000 m) et
+refuse un trajet qui ne part pas du départ demandé. **Journey ne fait pas cette
+vérification** : il lit la réponse `/api/route` directement. Un itinéraire
+raccroché à des kilomètres passerait donc en silence dans Journey. Ce n'est pas
+corrigé ici parce que ce serait une règle de refus nouvelle dans une page qui
+n'en avait pas ; c'est noté pour être décidé, pas oublié.
+
 ## La règle de parole
 
 Le produit parle **par-dessus un GPS qui parle déjà**, et aucun système
