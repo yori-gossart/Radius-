@@ -511,9 +511,16 @@ croit remplacé.
 16 septembre 2026 : `/api/journey-weather` répond 200 — Open-Meteo ne demande
 aucune clé — tandis que `/api/route` répond **503**, statut qu'une seule branche
 de `api/route.js` émet, celle où `process.env.GOOGLE_MAPS_API_KEY` est absent.
-C'est une affaire de configuration Vercel, pas de code : la variable est portée
-par l'environnement Production et n'a jamais été étendue à Preview. Ne jamais
-créer une seconde clé ni écrire la clé dans le dépôt pour contourner cela.
+C'était une affaire de configuration Vercel, pas de code : la variable était
+portée par le seul environnement Production. Ne jamais créer une seconde clé ni
+écrire la clé dans le dépôt pour contourner cela.
+
+**Étendue à Preview le 17 septembre 2026.** `GOOGLE_MAPS_API_KEY` couvre
+désormais Production et Preview. Une variable d'environnement est fixée au
+déploiement : **les déploiements antérieurs à ce changement gardent l'ancienne
+valeur**, donc l'absence de clé, et un 503 constaté sur l'un d'eux ne dit rien
+de la configuration actuelle. Il faut un nouveau déploiement pour que la
+variable entre en vigueur.
 
 Bancs : `test-journey-v02.mjs` (fonctions pures, accord solaire, échéances,
 directions cardinales, qualité GPS, fenêtre de prévision, échantillonnage du
