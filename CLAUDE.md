@@ -517,7 +517,7 @@ créer une seconde clé ni écrire la clé dans le dépôt pour contourner cela.
 
 Bancs : `test-journey-v02.mjs` (fonctions pures, accord solaire, échéances,
 directions cardinales, qualité GPS, fenêtre de prévision, échantillonnage du
-point fixe) et `test-journey-navigateur.mjs` (84 contrôles Playwright sur la
+point fixe) et `test-journey-navigateur.mjs` (165 contrôles Playwright sur la
 page réelle, dont le GPS à 2 km, le Soleil couché, l'instant précis champ par
 champ, les dates passées ou trop lointaines qui ne partent jamais à l'API, les
 deux référentiels de la rose, et le tout croisé contre le moteur importé côté

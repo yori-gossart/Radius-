@@ -65,9 +65,13 @@ Aucune formule scientifique touchée : `index.html` et les trois handlers resten
 byte-identiques, et le diff de `journey-core.mjs` ne contient aucune ligne de
 `solar()`.
 
-## Tests — 285 contrôles, 0 échec
+## Tests
 
-| Banc | Contrôles |
+> **Comptes du 16 septembre 2026, à la clôture de la V0.2.** Ils ont augmenté
+> depuis, sur la branche `radius-stabilization` : voir
+> `RADIUS-STABILIZATION-REPORT.md`, qui fait foi.
+
+| Banc | Contrôles ce jour-là |
 |---|---|
 | `test-journey-v02.mjs` (étendu) | déterministes, accord solaire, échéances, cardinaux, qualité GPS |
 | `test-journey-navigateur.mjs` | 53 |

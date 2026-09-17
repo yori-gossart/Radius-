@@ -108,7 +108,7 @@ remplacé.
 
 ```bash
 node test-journey-v02.mjs          # fonctions pures, accord solaire, échéances
-node test-journey-navigateur.mjs   # 30 contrôles Playwright sur la page réelle
+node test-journey-navigateur.mjs   # 165 contrôles Playwright sur la page réelle
 node test-api.mjs                  # dont le durcissement de /api/journey-weather
 ```
 
