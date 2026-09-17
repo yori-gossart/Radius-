@@ -75,5 +75,53 @@ for (const [page, dep] of [['index.html', 'radius-core.mjs'], ['journey.html', '
   }
 }
 
+console.log('\n== Les deux interfaces sont atteignables ==');
+/* Les deux coexistent le temps de la validation. La racine sert index.html ;
+   sans lien dans la page, journey.html n'était atteignable qu'en tapant son URL
+   à la main — invisible depuis la PWA installée, donc jamais essayé sur la
+   route. Aucune page d'accueil intermédiaire : elle coûterait un geste à chaque
+   lancement pour la tâche principale, qui reste le trajet. */
+const NAV = { 'index.html': './', 'journey.html': 'journey.html' };
+for (const [page, courant] of Object.entries(NAV)) {
+  const src = lire(page);
+  const nav = (src.match(/<nav class="nav-site"[\s\S]*?<\/nav>/) || [])[0] || '';
+  chk(`${page} porte la navigation entre interfaces`, !!nav);
+  const liens = [...nav.matchAll(/<a href="([^"]+)"([^>]*)>([^<]+)<\/a>/g)];
+  chk(`${page} : deux destinations, pas plus`, liens.length === 2,
+    liens.map((l) => l[1]).join(' | '));
+  chk(`${page} mène au Trajet`, liens.some((l) => l[1] === './'));
+  chk(`${page} mène à Journey & Point fixe`, liens.some((l) => l[1] === 'journey.html'));
+  /* Deux pages qui se prétendent toutes deux « page courante » ne se
+     distinguent plus : on ne sait plus où l'on est. */
+  const marques = liens.filter((l) => /aria-current="page"/.test(l[2]));
+  chk(`${page} : une seule page marquée courante`, marques.length === 1);
+  chk(`${page} se désigne elle-même`, marques.length === 1 && marques[0][1] === courant,
+    marques.length === 1 ? marques[0][1] : '(aucune)');
+  for (const [, href] of liens) {
+    const cible = href === './' ? 'index.html' : href;
+    chk(`${page} → ${href} existe (${cible})`, fs.existsSync(new URL('./' + cible, import.meta.url)));
+    chk(`${page} → ${href} est précaché`, new RegExp(cible.replace('.', '\\.')).test(fichiers)
+      || (href === './' && /'\.\/'/.test(fichiers)));
+  }
+}
+/* Le manifeste ne déclarait aucune portée : la valeur par défaut — le dossier
+   de start_url — englobe déjà journey.html, mais rien ne l'écrivait. L'écrire
+   ne change aucun comportement ; ça empêche qu'une portée plus étroite soit
+   ajoutée un jour sans voir qu'elle éjecterait Journey de l'application. */
+chk('la portée est déclarée', manifest.scope === './', manifest.scope);
+const dansPortee = (u) => new URL(u, 'https://x/a/').href
+  .startsWith(new URL(manifest.scope, 'https://x/a/').href);
+chk('journey.html reste dans la portée de l’application', dansPortee('journey.html'));
+chk('index.html aussi', dansPortee('index.html') && dansPortee(manifest.start_url));
+/* La PWA installée doit rester clairement RADIUS — donc pas de seconde
+   application — sans masquer Journey : un raccourci d'icône y mène en direct. */
+const raccourcis = manifest.shortcuts || [];
+chk('un raccourci mène à Journey depuis l’icône', raccourcis.length === 1
+  && raccourcis[0].url === 'journey.html', JSON.stringify(raccourcis.map((r) => r.url)));
+chk('la cible du raccourci existe',
+  raccourcis.every((r) => fs.existsSync(new URL('./' + r.url, import.meta.url))));
+chk('aucune seconde application n’est déclarée', manifest.name.startsWith('RADIUS')
+  && manifest.short_name === 'RADIUS');
+
 console.log(`\n${ok} contrôle(s) OK, ${ko} en échec.`);
 if (ko) { console.log('Échecs : ' + echecs.join(' | ')); process.exit(1); }

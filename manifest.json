@@ -2,10 +2,18 @@
   "name": "RADIUS — anticipation solaire",
   "short_name": "RADIUS",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#10151B",
   "theme_color": "#10151B",
+  "shortcuts": [
+    {
+      "name": "Journey & Point fixe",
+      "short_name": "Journey",
+      "url": "journey.html"
+    }
+  ],
   "icons": [
     {
       "src": "icon.svg",

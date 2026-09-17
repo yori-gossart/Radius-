@@ -85,7 +85,10 @@ const serveur = http.createServer(async (req, res) => {
     }
     return envoyer({ error: 'inconnu' }, 404);
   }
-  const nom = url.pathname === '/' ? '/journey.html' : url.pathname;
+  /* La racine sert index.html, comme sur Vercel : c'est ce que vise le lien
+     « Trajet » de la navigation. Un banc qui servirait journey.html à la
+     racine ferait passer un aller-retour qui n'a jamais eu lieu. */
+  const nom = url.pathname === '/' ? '/index.html' : url.pathname;
   const f = path.join(RACINE, nom);
   if (!f.startsWith(RACINE) || !fs.existsSync(f)) { res.writeHead(404); return res.end('non'); }
   res.writeHead(200, { 'content-type': MIME[path.extname(f)] || 'text/plain' });
@@ -836,6 +839,29 @@ chk('mais l’élévation négative reste lisible au niveau 3',
   /élévation -\d+\.\d+°/.test(await nuit.textContent('#compassTech')),
   (( await nuit.textContent('#compassTech')).match(/Soleil azimut[^\n]*/) || ['(absent)'])[0]);
 await nuit.close();
+
+/* ---------- la navigation entre les deux interfaces ----------
+   Elles coexistent le temps de la validation. Un lien présent dans le HTML ne
+   prouve pas qu'il mène quelque part : seul l'aller-retour réel le prouve, et
+   sur le même déploiement — c'est justement ce qui manquait. */
+const duo = await ctx.newPage();
+const erreursDuo = [];
+duo.on('pageerror', (e) => erreursDuo.push(String(e)));
+await duo.goto(base + '/journey.html');
+await duo.click('.nav-site a[href="./"]');
+await duo.waitForSelector('#from', { timeout: 15000 });
+chk('depuis Journey, le lien mène au Trajet',
+  new URL(duo.url()).pathname === '/' && (await duo.$('#from')) !== null, duo.url());
+chk('sans changer de déploiement', duo.url().startsWith(base + '/'), duo.url());
+await duo.click('.nav-site a[href="journey.html"]');
+await duo.waitForSelector('#tabStationary', { timeout: 15000 });
+chk('depuis le Trajet, le lien mène à Journey & Point fixe',
+  new URL(duo.url()).pathname === '/journey.html', duo.url());
+chk('et le mode Point fixe y est atteignable en un geste',
+  (await duo.$('#tabStationary')) !== null);
+chk('l’aller-retour entre les deux interfaces ne lève aucune erreur',
+  erreursDuo.length === 0, erreursDuo.slice(0, 2).join(' | '));
+await duo.close();
 
 chk('aucune erreur JavaScript sur tout le banc', erreursJS.length === 0,
   erreursJS.slice(0, 3).join(' | '));

@@ -9,7 +9,7 @@
 // jamais supprimé : un index.html périmé pouvait revenir hors ligne avec
 // d'anciens seuils T, et les relevés de terrain porteraient sur autre chose
 // que ce qu'on croit avoir déployé.
-const VERSION = 'v6';
+const VERSION = 'v7';
 const CACHE = `radius-${VERSION}`;
 /* index.html ne se suffit plus à lui-même : son script est un module qui
    importe radius-core.mjs. Sans lui au cache, l'application ne démarre pas hors

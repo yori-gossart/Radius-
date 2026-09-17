@@ -611,6 +611,54 @@ Les phrases **prononcées** n'ont pas changé : elles étaient déjà purement
 géométriques (« Soleil à droite dans 3 minutes »). `journey.html` non plus : il
 n'a jamais porté de mot de niveau.
 
+## Deux interfaces, une seule application
+
+Décision du 17 septembre 2026, sur un constat d'usage : la racine ouvrait
+`index.html` et rien d'autre. `journey.html` existait, était déployé, et n'était
+atteignable qu'en tapant son URL à la main. Une page que l'on n'atteint pas
+depuis le téléphone n'est pas essayée sur la route, donc ne mesure rien.
+
+**Les deux interfaces coexistent le temps de la validation** — Trajet, le moteur
+historique, et Journey & Point fixe, le laboratoire. Elles ne fusionnent pas et
+aucun moteur n'est réécrit : c'est un problème d'accès, pas de produit.
+
+**Une navigation de deux liens, présente sur les deux pages**, marque la page
+courante par `aria-current="page"`. « Trajet » vise `./`, jamais `index.html` :
+la racine est ce que sert Vercel et ce que déclare `start_url`, et garder la même
+URL évite deux entrées pour une seule page.
+
+**Pas de page d'accueil intermédiaire.** Elle a été envisagée et écartée : elle
+coûterait un geste à chaque lancement pour la tâche principale — préparer un
+trajet — au bénéfice d'une page de laboratoire. Le raccourci de manifeste rend
+Journey atteignable depuis l'icône sans rien coûter à personne.
+
+**Le manifeste déclare `scope: "./"`.** C'était déjà la valeur par défaut — le
+dossier de `start_url` —, donc rien ne change à l'exécution. L'écrire empêche
+qu'une portée plus étroite soit ajoutée un jour sans voir qu'elle éjecterait
+Journey de l'application installée. `start_url` ne bouge pas : un raccourci déjà
+posé sur un écran d'accueil continue de pointer au même endroit.
+
+**Le 503 de Google Routes sur Preview n'est pas un défaut de code.**
+`api/route.js` et `api/elevation.js` sont les deux seuls fichiers de `api/` à
+émettre un 503, chacun depuis une unique branche gardée par
+`if (!process.env.GOOGLE_MAPS_API_KEY)`, avec le code `GOOGLE_KEY_MISSING`.
+Aucune autre condition ne produit ce statut. Les deux lisent **la même**
+variable : la rendre disponible en Preview débloque les deux d'un coup. Ne
+jamais créer une seconde clé ni l'écrire dans le dépôt pour contourner cela —
+c'est une action de compte Vercel, pas de code.
+
+Le banc `test-journey-navigateur.mjs` sert désormais `index.html` à la racine,
+comme Vercel, et fait l'aller-retour réel entre les deux pages : un lien présent
+dans le HTML ne prouve pas qu'il mène quelque part.
+
+**Un défaut du banc, constaté ce jour-là et laissé ouvert :**
+`test-journey-navigateur.mjs` n'est pas déterministe sous charge. Deux exécutions
+simultanées suffisent à faire dépasser les 45 s d'attente de « Sortie calculée »,
+et trois contrôles de la sortie complète échouent alors sans qu'aucun code n'ait
+changé — vérifié en rejouant le banc sur le commit précédent, qui échoue aux
+mêmes trois. Le relâchement de l'échéance masquerait le symptôme sans rien
+mesurer : le banc se lance seul, et son résultat ne vaut que dans ces conditions.
+
 ## La règle de parole
 
 Le produit parle **par-dessus un GPS qui parle déjà**, et aucun système

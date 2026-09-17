@@ -25,6 +25,17 @@ html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body)
 body{padding:0 0 max(24px,env(safe-area-inset-bottom))}
 .wrap{max-width:520px;margin:0 auto;padding:0 18px}
 
+/* ---- navigation entre les deux interfaces ----
+   Elles coexistent le temps de la validation : le moteur historique d'un côté,
+   le laboratoire de l'autre. Sans ce lien, journey.html n'était atteignable
+   qu'en tapant son URL à la main, donc invisible depuis la PWA installée. */
+.nav-site{display:flex;gap:8px;padding:14px 0 0}
+.nav-site a{flex:1;text-align:center;text-decoration:none;font-family:var(--mono);
+  font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);
+  background:var(--panel2);border:1px solid var(--edge);border-radius:9px;padding:11px 6px}
+.nav-site a[aria-current="page"]{color:var(--ink);border-color:var(--sky);background:var(--panel)}
+.nav-site a:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
+
 /* ---- en-tête ---- */
 header{padding:22px 0 16px;border-bottom:1px solid var(--edge);margin-bottom:20px}
 .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
@@ -224,6 +235,11 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
 </head>
 <body>
 <div class="wrap">
+
+<nav class="nav-site" aria-label="Interfaces RADIUS">
+  <a href="./" aria-current="page">Trajet</a>
+  <a href="journey.html">Journey &amp; Point fixe</a>
+</nav>
 
 <header>
   <p class="eyebrow">Radius</p>
