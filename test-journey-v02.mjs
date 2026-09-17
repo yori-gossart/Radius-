@@ -6,6 +6,7 @@ import {
   fenetrePrevision, previsionDisponible, nombreEchantillons, echantillonsPointFixe,
   HORIZON_PREVISION_JOURS, secteurRelatif, libelleSecteur, SECTEURS_RELATIFS,
   pointRose, ROSE_CENTRE, mod360, angleRose, vueEffectiveRose, VUES_ROSE,
+  meilleurePosition, resumeAcquisition, DUREE_ACQUISITION_MS, nombreStrict,
 } from './journey-core.mjs';
 
 const near = (a,b,t=1e-6) => Math.abs(a-b) <= t;
@@ -594,6 +595,78 @@ assert.equal(angleRose(NaN, 150, 'face'), null, 'aucun angle sans azimut');
     'basculer de vue redessine');
   assert.ok((nu.match(/dessinerRose\(\)/g) || []).length >= 4,
     'la rose est redessinée à chaque changement d’heure, d’orientation et de vue');
+}
+
+/* ── Acquisition GPS : garder la meilleure, pas la première (17 sept. 2026) ──
+   Le premier point rendu par le téléphone vient souvent du réseau, pas des
+   satellites : c'est ce qui produisait les 2 km relevés sur le terrain. */
+assert.equal(DUREE_ACQUISITION_MS, 8000, 'la fenêtre d’acquisition est bornée');
+
+assert.deepEqual(meilleurePosition({ accuracy: 2000 }, { accuracy: 45 }), { accuracy: 45 },
+  'la plus précise gagne, quel que soit l’ordre');
+assert.deepEqual(meilleurePosition({ accuracy: 45 }, { accuracy: 2000 }), { accuracy: 45 });
+assert.deepEqual(meilleurePosition(null, { accuracy: 12 }), { accuracy: 12 });
+assert.deepEqual(meilleurePosition({ accuracy: 12 }, null), { accuracy: 12 });
+assert.equal(meilleurePosition(null, null), null, 'rien de rien reste rien');
+// UNE PRÉCISION ABSENTE NE BAT JAMAIS UNE MESURE. `Number(null)` vaut 0 : lue
+// sans précaution, « précision inconnue » deviendrait « 0 m », donc la
+// meilleure mesure possible. Ce piège a déjà frappé ce dépôt trois fois.
+for (const absente of [null, undefined, NaN, '', 'proche']) {
+  assert.deepEqual(meilleurePosition({ accuracy: absente }, { accuracy: 80 }), { accuracy: 80 },
+    `précision ${JSON.stringify(absente)} ne bat pas 80 m`);
+  assert.deepEqual(meilleurePosition({ accuracy: 80 }, { accuracy: absente }), { accuracy: 80 },
+    `80 m n’est pas détrônée par ${JSON.stringify(absente)}`);
+}
+assert.deepEqual(meilleurePosition({ accuracy: 0 }, { accuracy: 5 }), { accuracy: 0 },
+  'un vrai zéro mesuré reste la meilleure précision');
+// Une suite de mesures converge vers la meilleure, quel que soit l’ordre d’arrivée.
+{
+  const suite = [1800, 900, 140, 62, 55, 310];
+  let m = null;
+  for (const a of suite) m = meilleurePosition(m, { accuracy: a });
+  assert.equal(m.accuracy, 55, 'la meilleure de la série est retenue');
+  let inverse = null;
+  for (const a of [...suite].reverse()) inverse = meilleurePosition(inverse, { accuracy: a });
+  assert.equal(inverse.accuracy, 55, 'et l’ordre d’arrivée n’y change rien');
+}
+
+// Le résumé dit le chiffre, la fiabilité et le nombre de mesures.
+{
+  const bon = resumeAcquisition({ accuracy: 38 }, 5);
+  assert.equal(bon.fiable, true);
+  assert.equal(bon.mesures, 5);
+  assert.match(bon.texte, /38 m/); assert.match(bon.texte, /Meilleure de 5 mesures/);
+  const flou = resumeAcquisition({ accuracy: 2000 }, 4);
+  assert.equal(flou.fiable, false);
+  assert.match(flou.texte, /2000 m/, 'le chiffre n’est jamais masqué');
+  assert.match(flou.texte, /trop imprécise pour un relevé terrain fiable/,
+    'l’alerte au-delà de 100 m est conservée');
+  const rien = resumeAcquisition(null, 0);
+  assert.equal(rien.fiable, false);
+  assert.match(rien.texte, /inconnue/);
+  assert.match(rien.texte, /0 mesure\./, 'le singulier est respecté');
+  assert.match(resumeAcquisition({ accuracy: 12 }, 1).texte, /1 mesure\./);
+}
+
+/* ── L'acquisition dans la page ── */
+{
+  const j = fs.readFileSync(new URL('./journey.html', import.meta.url), 'utf8');
+  const nu = j.replace(/\s/g, '');
+  assert.ok(/watchPosition/.test(nu), 'plusieurs positions sont écoutées');
+  assert.ok(/functionacquerirPosition/.test(nu));
+  assert.ok(/id="arreterGps"/.test(j), 'l’acquisition peut être interrompue');
+  assert.ok(/clearWatch\(veille\)/.test(nu) && /clearTimeout\(minuteur\)/.test(nu),
+    'la veille et le minuteur sont toujours relâchés');
+  assert.ok(/if\(fini\)return;fini=true/.test(nu),
+    'la fin n’arrive qu’une fois : ni double résolution, ni fuite');
+  // Elle s'arrête tôt sur le seuil DÉJÀ décidé, elle n'en invente pas un second.
+  assert.ok(/<=PRECISION_TERRAIN_M\)finir\(\)/.test(nu),
+    'l’arrêt anticipé réutilise PRECISION_TERRAIN_M');
+  assert.ok(!/DUREE_ACQUISITION_MS\s*=\s*\d/.test(nu.replace(/DUREE_ACQUISITION_MS/g, 'X')),
+    'aucune durée recopiée dans la page');
+  // Elle ne bloque pas : une précision médiocre est rendue quand même.
+  assert.ok(/if\(meilleure\)resolve/.test(nu),
+    'une position médiocre est rendue plutôt que rejetée');
 }
 
 console.log('RADIUS V0.2 Journey + Stationary — Soleil aligné sur index.html, échéances et règles figées OK');

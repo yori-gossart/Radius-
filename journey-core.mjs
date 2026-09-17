@@ -229,7 +229,7 @@ export function qualitePosition(accuracyM) {
     sans précaution, il devenait un cap de 0° — plein Nord — annoncé comme une
     mesure. Ce dépôt s'est déjà fait prendre par ce piège exact, avec une
     latitude nulle devenue l'équateur. Une absence de mesure n'est pas zéro. */
-function nombreStrict(v) {
+export function nombreStrict(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : NaN;
   if (typeof v === 'string' && v.trim() !== '') {
     const n = Number(v);
@@ -373,4 +373,38 @@ export function angleRose(azimutDeg, headingDeg, vue) {
   if (!Number.isFinite(az)) return null;
   if (vueEffectiveRose(vue, headingDeg) === 'nord') return mod360(az);
   return signedDelta(nombreStrict(headingDeg), az);
+}
+
+/* ---- acquisition GPS ----
+   Le premier point rendu par le téléphone est le plus mauvais : il vient
+   souvent du réseau ou du Wi-Fi, pas encore des satellites. C'est ce qui
+   produisait les 2 km relevés sur le terrain. On écoute donc quelques
+   secondes et on garde la meilleure mesure, au lieu de prendre la première
+   venue.
+
+   DUREE_ACQUISITION_MS borne une attente, elle ne mesure rien : ce n'est pas
+   un seuil scientifique et elle ne se mêle jamais à T. Le seuil de qualité,
+   lui, reste PRECISION_TERRAIN_M — on n'en invente pas un second. */
+export const DUREE_ACQUISITION_MS = 8000;
+
+/** Garde la position la plus précise des deux. Une précision ABSENTE ne bat
+    jamais une précision mesurée, et `Number(null)` valant 0, elle est lue
+    strictement : sans cela, « précision inconnue » deviendrait « 0 m », donc
+    la meilleure mesure possible. C'est le piège qui a déjà frappé ce dépôt
+    trois fois. */
+export function meilleurePosition(a, b) {
+  if (!a) return b || null;
+  if (!b) return a;
+  const pa = nombreStrict(a.accuracy), pb = nombreStrict(b.accuracy);
+  if (!Number.isFinite(pa)) return Number.isFinite(pb) ? b : a;
+  if (!Number.isFinite(pb)) return a;
+  return pb < pa ? b : a;
+}
+
+/** Résumé d'une acquisition, pour l'écran et pour le journal. */
+export function resumeAcquisition(meilleure, mesures) {
+  const n = Math.max(0, Math.round(Number(mesures) || 0));
+  const q = qualitePosition(meilleure ? meilleure.accuracy : undefined);
+  const combien = n <= 1 ? `${n} mesure` : `${n} mesures`;
+  return { ...q, mesures: n, texte: `${q.texte} Meilleure de ${combien}.` };
 }

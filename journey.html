@@ -87,6 +87,7 @@
     </div>
     <div class="stack">
       <button class="btn" id="prevoir">Prévoir à ce point</button>
+      <button class="btn secondary hidden" id="arreterGps">Arrêter l’acquisition</button>
       <button class="btn secondary" id="compassBtn">Activer la boussole</button>
     </div>
     <div id="stationaryStatus" class="status"></div>
@@ -129,11 +130,12 @@ import { routeSamples, stationarySamples, solar, sunRelativeLabel, compassHeadin
   fetchBorne, DELAI_ROUTE_MS, DELAI_METEO_MS, DELAI_GEOCODE_MS,
   directionLisible, qualitePosition, PRECISION_TERRAIN_M,
   echantillonsPointFixe, previsionDisponible, HORIZON_PREVISION_JOURS,
+  meilleurePosition, resumeAcquisition, DUREE_ACQUISITION_MS, nombreStrict,
   secteurRelatif, libelleSecteur, pointRose, mod360,
   angleRose, vueEffectiveRose } from './journey-core.mjs';
 
 const $ = (id) => document.getElementById(id);
-const state = { originPoint:null, stationaryPoint:null, stationarySamples:null, stationaryWx:null, heading:null, compassAbsolute:false, compassStarted:false, compassSource:null, vueRose:'face', statMaintenant:false, statHorizon:0, statDebutMs:NaN, lastTimelineHeading:null };
+const state = { originPoint:null, stationaryPoint:null, stationarySamples:null, stationaryWx:null, heading:null, compassAbsolute:false, compassStarted:false, compassSource:null, vueRose:'face', abandonGps:null, statMaintenant:false, statHorizon:0, statDebutMs:NaN, lastTimelineHeading:null };
 const fmtTime = new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'});
 const fmtDate = new Intl.DateTimeFormat('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'});
 const fmtKm = (m) => `${(Number(m||0)/1000).toFixed(Number(m||0)>=10000?0:1)} km`;
@@ -153,7 +155,43 @@ function switchTab(which){const journey=which==='journey';$('journeyPanel').clas
 $('tabJourney').onclick=()=>switchTab('journey');
 $('tabStationary').onclick=()=>{switchTab('stationary');$('liveCard').classList.remove('hidden');dessinerRose()};
 
+/** Une seule position, pour le départ du Journey : on ne fait pas attendre
+    l'utilisateur qui saisit une adresse. */
 async function gps(){return new Promise((resolve,reject)=>{if(!navigator.geolocation)return reject(new Error('Géolocalisation non disponible.'));navigator.geolocation.getCurrentPosition((p)=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy}),()=>reject(new Error('Position refusée ou indisponible.')),{enableHighAccuracy:true,timeout:12000,maximumAge:30000})})}
+
+/* Le premier point rendu par le téléphone vient souvent du réseau, pas des
+   satellites : c'est ce qui produisait les 2 km relevés sur le terrain. Pour un
+   relevé, on écoute quelques secondes et on garde la MEILLEURE mesure.
+   L'acquisition s'arrête d'elle-même dès qu'une mesure passe sous le seuil de
+   relevé fiable — inutile d'attendre plus —, au délai, ou sur abandon. Elle ne
+   bloque jamais : si la précision reste médiocre, on rend quand même la
+   meilleure obtenue et l'écran le dit. */
+async function acquerirPosition(onProgres){
+  return new Promise((resolve,reject)=>{
+    if(!navigator.geolocation)return reject(new Error('Géolocalisation non disponible.'));
+    let meilleure=null,mesures=0,fini=false,veille=null;
+    const finir=(err)=>{
+      if(fini)return; fini=true;
+      if(veille!==null)navigator.geolocation.clearWatch(veille);
+      clearTimeout(minuteur); state.abandonGps=null;
+      if(meilleure)resolve({...meilleure,mesures});
+      else reject(err||new Error('Aucune position obtenue.'));
+    };
+    const minuteur=setTimeout(()=>finir(
+      new Error(`Aucune position en ${Math.round(DUREE_ACQUISITION_MS/1000)} s.`)),DUREE_ACQUISITION_MS);
+    // L'abandon est explicite et rend ce qu'on a déjà : arrêter n'est pas échouer.
+    state.abandonGps=()=>finir(new Error('Acquisition interrompue avant toute mesure.'));
+    veille=navigator.geolocation.watchPosition((p)=>{
+      mesures++;
+      meilleure=meilleurePosition(meilleure,
+        {lat:p.coords.latitude,lng:p.coords.longitude,accuracy:nombreStrict(p.coords.accuracy)});
+      if(onProgres)onProgres(meilleure,mesures);
+      if(Number.isFinite(nombreStrict(meilleure.accuracy))
+        && nombreStrict(meilleure.accuracy)<=PRECISION_TERRAIN_M)finir();
+    },()=>{ if(!meilleure)finir(new Error('Position refusée ou indisponible.')); },
+      {enableHighAccuracy:true,timeout:DUREE_ACQUISITION_MS,maximumAge:0});
+  });
+}
 
 async function geocode(text){const q=String(text||'').trim();if(!q)throw new Error('Adresse manquante.');const url=`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=fr&q=${encodeURIComponent(q)}`;const {ok,json:data}=await fetchBorne(url,{headers:{accept:'application/json'}},DELAI_GEOCODE_MS,'La recherche d’adresse');if(!ok)throw new Error('Le géocodage ne répond pas.');if(!data?.length)throw new Error(`Adresse introuvable : ${q}`);return {lat:Number(data[0].lat),lng:Number(data[0].lon),label:data[0].display_name||q}}
 
@@ -296,9 +334,18 @@ async function planStationary(){
     const horizon=Number($('stationaryDuration').value)||0;
     state.statDebutMs=debut;state.statHorizon=horizon;
 
-    setStatus($('stationaryStatus'),'Position en cours…');
-    const p=await gps();state.stationaryPoint=p;
-    const q=qualitePosition(p.accuracy);
+    setStatus($('stationaryStatus'),'Acquisition GPS…');
+    $('arreterGps').classList.remove('hidden');
+    let p;
+    try{
+      p=await acquerirPosition((meilleure,n)=>setStatus($('stationaryStatus'),
+        `Acquisition GPS… ${n} mesure${n>1?'s':''} · meilleure `
+        +`${Number.isFinite(nombreStrict(meilleure.accuracy))?Math.round(meilleure.accuracy)+' m':'inconnue'}`));
+    }finally{ $('arreterGps').classList.add('hidden'); }
+    state.stationaryPoint=p;
+    // La précision n'est jamais masquée, et une position trop floue ne bloque
+    // rien : c'est en marchant qu'on découvre que le GPS dérive. On le dit.
+    const q=resumeAcquisition(p,p.mesures);
     $('gpsQualite').textContent=q.texte;
     $('gpsQualite').className=q.fiable?'note':'warn';
     $('gpsQualite').classList.remove('hidden');
@@ -360,6 +407,7 @@ function texteFenetre(v){
   return v.raison==='avant'?`Cette date est passée. ${bornes}`:`Cette date est trop lointaine. ${bornes}`;
 }
 $('prevoir').onclick=planStationary;
+$('arreterGps').onclick=()=>{ if(state.abandonGps)state.abandonGps(); };
 $('statMaintenant').onclick=statMaintenant;
 $('statDate').addEventListener('input',()=>{state.statMaintenant=false});
 $('statTime').addEventListener('input',()=>{state.statMaintenant=false});

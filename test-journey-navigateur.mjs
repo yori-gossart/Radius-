@@ -104,17 +104,36 @@ const nav = await playwright.chromium.launch();
 const MAINTENANT = new Date(args.maintenant || '2026-12-21T15:40:00+04:00').getTime();
 const ctx = await nav.newContext({ timezoneId: 'Indian/Reunion', locale: 'fr-FR',
   permissions: ['geolocation'], geolocation: { latitude: A.lat, longitude: A.lng } });
-/* Playwright ne donne aucune précision : sans ce shim, `accuracy` vaut 0 et le
-   cas du fondateur — 2 km de flou sur le terrain — resterait intestable. */
-const precisionGps = { m: 12 };
+/* Playwright ne donne aucune précision, et ne sert qu'un point fixe : sans ce
+   shim, `accuracy` vaut 0 et le cas du fondateur — 2 km de flou, puis une
+   convergence vers quelques dizaines de mètres — resterait intestable.
+   `__seriePrecisions` est la suite de précisions que le téléphone rendrait,
+   une mesure toutes les 60 ms ; `__precisionGps` reste le cas à une mesure. */
 await ctx.addInitScript(() => {
-  const vrai = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
-  navigator.geolocation.getCurrentPosition = (ok, ko, opts) => vrai((p) => ok({
+  const faire = (p, precision) => ({
     coords: { latitude: p.coords.latitude, longitude: p.coords.longitude,
-      accuracy: window.__precisionGps, altitude: null, altitudeAccuracy: null,
+      accuracy: precision, altitude: null, altitudeAccuracy: null,
       heading: null, speed: null },
     timestamp: p.timestamp,
-  }), ko, opts);
+  });
+  const vrai = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
+  navigator.geolocation.getCurrentPosition = (ok, ko, opts) =>
+    vrai((p) => ok(faire(p, window.__precisionGps)), ko, opts);
+  window.__mesuresServies = 0;
+  navigator.geolocation.watchPosition = (ok, ko, opts) => {
+    const serie = window.__seriePrecisions || [window.__precisionGps];
+    let i = 0;
+    const id = setInterval(() => {
+      vrai((p) => {
+        window.__mesuresServies++;
+        ok(faire(p, serie[Math.min(i, serie.length - 1)]));
+        i++;
+      }, ko, opts);
+    }, 60);
+    window.__dernierWatch = id;
+    return id;
+  };
+  navigator.geolocation.clearWatch = (id) => clearInterval(id);
 });
 await ctx.addInitScript((m) => {
   const V = Date, dec = m - V.now();
@@ -353,6 +372,39 @@ chk('une date passée est refusée par la même règle',
   (await page.textContent('#meteoFenetre')).slice(0, 90));
 chk('et n’est pas envoyée non plus',
   journal.filter((j) => j.chemin === '/api/journey-weather').length === avantPasse);
+
+console.log('\n== Point fixe · l’acquisition garde la meilleure mesure ==');
+await page.goto(base + '/journey.html');
+// Ce que fait vraiment un téléphone : le premier point vient du réseau.
+await page.evaluate(() => { window.__seriePrecisions = [1800, 640, 210, 74, 55]; });
+await page.click('#tabStationary');
+await page.click('#prevoir');
+await page.waitForSelector('#stationaryForecast:not(.hidden)', { timeout: 40000 }).catch(() => {});
+const acq = await page.textContent('#gpsQualite');
+chk('la meilleure précision de la série est retenue, pas la première',
+  /74 m/.test(acq) && !/1800 m/.test(acq), acq);
+chk('le nombre de mesures est dit', /Meilleure de \d+ mesures?/.test(acq), acq);
+chk('l’acquisition s’arrête dès qu’une mesure est assez précise',
+  (await page.evaluate(() => window.__mesuresServies)) <= 5,
+  `${await page.evaluate(() => window.__mesuresServies)} mesure(s) servies`);
+chk('elle n’est pas restée fiable par hasard : 74 m passe sous le seuil',
+  !/trop imprécise/.test(acq), acq);
+chk('le bouton d’arrêt est masqué une fois l’acquisition finie',
+  await page.isHidden('#arreterGps'));
+
+console.log('\n== Point fixe · la précision reste médiocre, rien ne bloque ==');
+await page.goto(base + '/journey.html');
+await page.evaluate(() => { window.__seriePrecisions = [2400, 2000, 1900]; });
+await page.click('#tabStationary');
+await page.click('#prevoir');
+await page.waitForSelector('#stationaryForecast:not(.hidden)', { timeout: 40000 }).catch(() => {});
+const flou = await page.textContent('#gpsQualite');
+chk('la meilleure des mauvaises est quand même retenue', /1900 m/.test(flou), flou);
+chk('et l’alerte au-delà de 100 m tient',
+  /trop imprécise pour un relevé terrain fiable/.test(flou), flou);
+chk('le prototype fonctionne malgré tout',
+  await page.isVisible('#stationaryForecast')
+  && (await page.$$eval('#stationaryTimeline .point, #instantBloc .point', (n) => n.length)) >= 1);
 
 console.log('\n== Point fixe · GPS imprécis (le cas relevé sur le A55) ==');
 await page.goto(base + '/journey.html');
@@ -703,7 +755,12 @@ await nuit.addInitScript((m) => {
 await nuit.goto(base + '/journey.html');
 await nuit.click('#tabStationary');
 await nuit.click('#prevoir');
-await nuit.waitForSelector('#liveCard:not(.hidden)', { timeout: 30000 }).catch(() => {});
+/* `#liveCard:not(.hidden)` se résout dès le changement d'onglet : il ne dit
+   rien de la position. Depuis que l'acquisition écoute plusieurs mesures, il
+   faut attendre le signal réel de capture — #gpsQualite n'est rempli qu'à la
+   fin. Sans cela, le Soleil serait interrogé avant qu'un point existe, et les
+   contrôles passeraient sur le texte par défaut, donc sur rien. */
+await nuit.waitForSelector('#gpsQualite:not(.hidden)', { timeout: 40000 }).catch(() => {});
 await nuit.click('#compassBtn');
 await nuit.evaluate(() => {
   const e = new Event('deviceorientationabsolute');
