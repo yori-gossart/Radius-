@@ -100,7 +100,7 @@ function reponseRoute(geom) {
   };
 }
 
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json',
+const MIME = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript', '.json': 'application/json',
                '.svg': 'image/svg+xml' };
 
 const serveur = http.createServer(async (req, res) => {

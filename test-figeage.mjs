@@ -70,7 +70,8 @@ function reponseRoute(geom) {
     trafficFactor: 1.1, geometry: geom, steps };
 }
 
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml' };
+const MIME = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript',
+  '.json': 'application/json', '.svg': 'image/svg+xml' };
 const serveur = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const envoyer = (o, s = 200) => { res.writeHead(s, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
@@ -215,9 +216,15 @@ if (veut('F-002')) {
   const tech = await page.textContent('#techGlobal');
   chk('F-002 la panne météo est nommée au niveau 3', /Météo erreur.*n.a pas répondu en \d+ s/s.test(tech),
     (tech.match(/Météo erreur[^\n]*/) || ['(rien)'])[0]);
-  const inconnu = await page.evaluate(() =>
-    state.result.zones.every((z) => z.weatherContext && z.weatherContext.status === 'unknown'));
-  chk('F-002 aucune valeur météo inventée : statut inconnu partout', inconnu);
+  /* Lu dans le niveau 3, pas dans l'état interne : index.html sert son script
+     en module depuis le 17 septembre 2026, et `page.evaluate` ne voit pas la
+     portée d'un module. Lire le DOM est de toute façon plus juste — c'est ce
+     qui prouve que le relevé reste reconstituable par le fondateur. */
+  const zonesTech = await page.$$eval('.techzone', (n) => n.map((x) => x.textContent));
+  chk('F-002 aucune valeur météo inventée : statut inconnu partout',
+    zonesTech.length > 0 && zonesTech.every((t) => /Météo status unknown/.test(t))
+    && !zonesTech.some((t) => /DNI \d/.test(t)),
+    `${zonesTech.length} zone(s) au niveau 3`);
 }
 
 /* ── F-003 — /api/elevation muet : le relief non plus ne bloque rien ── */
@@ -235,45 +242,46 @@ if (veut('F-003')) {
   const tech = await page.textContent('#techGlobal');
   chk('F-003 la panne relief est nommée au niveau 3', /Relief erreur.*n.a pas répondu en \d+ s/s.test(tech),
     (tech.match(/Relief erreur[^\n]*/) || ['(rien)'])[0]);
-  const inconnu = await page.evaluate(() => {
-    const z = state.result.zones.filter((x) => x.terrainOcclusion);
-    return z.length > 0 && z.every((x) => x.terrainOcclusion.status === 'unknown');
-  });
-  chk('F-003 le relief reste « inconnu », jamais « soleil libre » par défaut', inconnu);
+  const zonesTech3 = await page.$$eval('.techzone', (n) => n.map((x) => x.textContent));
+  const avecRelief = zonesTech3.filter((t) => /Relief /.test(t));
+  chk('F-003 le relief reste « inconnu », jamais « soleil libre » par défaut',
+    avecRelief.length > 0 && avecRelief.every((t) => /Relief inconnu/.test(t))
+    && !avecRelief.some((t) => /Relief (libre|masqué)/.test(t)),
+    `${avecRelief.length} zone(s) avec relief`);
   chk('F-003 la météo, elle, a bien été interrogée',
     journal.filter((j) => j.chemin === '/api/weather').length > 0);
 }
 
 /* ── F-004 — une panne dans la remise à zéro ne doit pas geler la page ──
    Cette région tournait hors du try/finally : n'importe quelle exception y
-   laissait le verrou posé et le bouton grisé à vie, sans un mot. */
+   laissait le verrou posé et le bouton grisé à vie, sans un mot.
+
+   La panne n'est plus simulée en remplaçant une fonction — index.html sert son
+   script en module depuis le 17 septembre 2026, et sa portée est close. On
+   provoque la VRAIE panne d'origine : un identifiant d'élément disparu.
+   viderAffichageTrajet() écrit dans #techEpisodes ; sans lui, elle lève un
+   TypeError exactement là où il faut. C'est plus fidèle que l'ancien montage. */
 if (veut('F-004')) {
   console.log('\n== F-004 — une exception avant le réseau ==');
   await preparer();
-  await page.evaluate(() => {
-    const vrai = window.viderAffichageTrajet || viderAffichageTrajet;
-    let tire = false;
-    // eslint-disable-next-line no-global-assign
-    globalThis.__vider = vrai;
-    viderAffichageTrajet = function () {
-      if (!tire) { tire = true; throw new TypeError('panne simulée dans la remise à zéro'); }
-      return vrai.apply(this, arguments);
-    };
-  }).catch(() => {});
-  const remplacable = await page.evaluate(() => {
-    try { return typeof viderAffichageTrajet === 'function'; } catch { return false; }
+  const retire = await page.evaluate(() => {
+    const el = document.getElementById('techEpisodes');
+    if (!el) return false;
+    el.remove();
+    return document.getElementById('techEpisodes') === null;
   });
   const routesAvant = journal.filter((j) => j.chemin === '/api/route').length;
   await page.click('#analyze');
   await page.waitForTimeout(2500);
   const apres = await bouton();
-  chk('F-004 la fonction de remise à zéro est bien atteignable par le banc', remplacable);
+  chk('F-004 l’élément dont dépend la remise à zéro a bien été retiré', retire);
   chk('F-004 le bouton n’est pas resté figé', !FIGE(apres), `${apres.texte} · grisé ${apres.grise}`);
   chk('F-004 la panne est dite, pas avalée',
     !(await page.evaluate(() => document.getElementById('err').classList.contains('hide'))),
     (await page.textContent('#err')).trim());
   chk('F-004 aucune requête n’est partie sur une remise à zéro ratée',
-    journal.filter((j) => j.chemin === '/api/route').length === routesAvant);
+    journal.filter((j) => j.chemin === '/api/route').length === routesAvant,
+    `${journal.filter((j) => j.chemin === '/api/route').length - routesAvant} requête(s)`);
 }
 
 /* ── F-005 — après une échéance, l'application reste utilisable ── */

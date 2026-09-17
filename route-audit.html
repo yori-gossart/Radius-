@@ -408,21 +408,24 @@ async function chargerProduction() {
     const r = await fetch('index.html', { cache: 'no-store' });
     if (!r.ok) throw new Error('index.html inaccessible (' + r.status + ')');
     const html = await r.text();
-    const i = html.indexOf('<script>'), j = html.lastIndexOf('<\/script>');
-    if (i < 0 || j < 0) throw new Error('script introuvable dans index.html');
-    const js = html.slice(i + 8, j);
+    // index.html sert son script en module depuis le 17 septembre 2026 : on
+    // repère la balise ouvrante sans supposer qu'elle est nue.
+    const ouvre = /<script[^>]*>/.exec(html);
+    const j = html.lastIndexOf('<\/script>');
+    if (!ouvre || j < 0) throw new Error('script introuvable dans index.html');
+    const js = html.slice(ouvre.index + ouvre[0].length, j);
 
     const step = /^const STEP_METERS = (\d+);/m.exec(js);
     if (!step) throw new Error('STEP_METERS introuvable');
     const fen = /^const HEADING_HALF_WINDOW = (\d+);/m.exec(js);
     if (!fen) throw new Error('HEADING_HALF_WINDOW introuvable — index.html est antérieur au cap local');
+    // dist() et bearing() ne vivent plus dans index.html : elles sont dans le
+    // cœur commun, que l'on charge RÉELLEMENT plutôt que d'en recopier une
+    // version ici — un audit qui porte sa propre copie n'audite que lui-même.
+    const coeur = await import('./radius-core.mjs');
     const morceaux = [
-      'const R = Math.PI / 180, D = 180 / Math.PI;',
-      'const EARTH = 6371008.8;',
       'const STEP_METERS = ' + step[1] + ';',
       'const HEADING_HALF_WINDOW = ' + fen[1] + ';',
-      extraireBloc(js, 'dist'),
-      extraireBloc(js, 'bearing'),
       extraireBloc(js, 'pointAtDistance'),
       extraireBloc(js, 'headingAtDistance'),
       extraireBloc(js, 'resample'),
@@ -431,7 +434,8 @@ async function chargerProduction() {
         + ' routeGoogleVersTimeline, STEP_METERS, HEADING_HALF_WINDOW };',
     ];
     const src = morceaux.join('\n\n');
-    PROD.fns = new Function(src)();
+    PROD.fns = new Function('R', 'D', 'EARTH', 'dist', 'bearing', src)(
+      coeur.R, coeur.D, coeur.EARTH, coeur.dist, coeur.bearing);
     PROD.source = src;
     PROD.empreinte = empreinte(js);
     PROD.stepMeters = +step[1];

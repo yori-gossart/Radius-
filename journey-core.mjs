@@ -1,97 +1,13 @@
-export const R = Math.PI / 180;
-export const D = 180 / Math.PI;
+/* RADIUS V0.2 — outils du mode Journey / Point fixe.
+   La géométrie et l'astronomie viennent de radius-core.mjs : une seule copie de
+   `solar()`, `bearing()`, `dist()` et `signedDelta()` existe dans le dépôt, et
+   c'est celle du moteur calibré d'index.html. Ce fichier les réexporte pour que
+   journey.html continue de les importer d'un seul endroit. */
+export { R, D, EARTH, mod360, solar, dist, bearing, signedDelta } from './radius-core.mjs';
+import { R, D, EARTH, mod360, solar, dist, bearing, signedDelta } from './radius-core.mjs';
 
-export function mod360(v) {
-  return ((Number(v) % 360) + 360) % 360;
-}
-
-export function signedDelta(fromDeg, toDeg) {
-  let d = mod360(toDeg) - mod360(fromDeg);
-  if (d > 180) d -= 360;
-  if (d <= -180) d += 360;
-  return d;
-}
-
-export function haversine(aLat, aLng, bLat, bLng) {
-  const p1 = Number(aLat) * R;
-  const p2 = Number(bLat) * R;
-  const dp = (Number(bLat) - Number(aLat)) * R;
-  const dl = (Number(bLng) - Number(aLng)) * R;
-  const h = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
-  return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-}
-
-export function bearing(aLat, aLng, bLat, bLng) {
-  const p1 = Number(aLat) * R;
-  const p2 = Number(bLat) * R;
-  const dl = (Number(bLng) - Number(aLng)) * R;
-  const y = Math.sin(dl) * Math.cos(p2);
-  const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
-  return mod360(Math.atan2(y, x) * D);
-}
-
-export function solar(dateMs, lat, lng) {
-  const jd = Number(dateMs) / 86400000 + 2440587.5;
-  const t = (jd - 2451545) / 36525;
-  const L0 = mod360(280.46646 + t * (36000.76983 + t * 0.0003032));
-  const M = 357.52911 + t * (35999.05029 - 0.0001537 * t);
-  const e = 0.016708634 - t * (0.000042037 + 0.0000001267 * t);
-  const Mr = M * R;
-  const C = Math.sin(Mr) * (1.914602 - t * (0.004817 + 0.000014 * t))
-    + Math.sin(2 * Mr) * (0.019993 - 0.000101 * t)
-    + Math.sin(3 * Mr) * 0.000289;
-  const trueLong = L0 + C;
-  const omega = 125.04 - 1934.136 * t;
-  const lambda = trueLong - 0.00569 - 0.00478 * Math.sin(omega * R);
-  const eps0 = 23 + (26 + ((21.448 - t * (46.815 + t * (0.00059 - t * 0.001813))) / 60)) / 60;
-  const eps = eps0 + 0.00256 * Math.cos(omega * R);
-  const decl = Math.asin(Math.sin(eps * R) * Math.sin(lambda * R));
-
-  const y = Math.tan((eps * R) / 2) ** 2;
-  const eqTime = 4 * D * (y * Math.sin(2 * L0 * R)
-    - 2 * e * Math.sin(Mr)
-    + 4 * e * y * Math.sin(Mr) * Math.cos(2 * L0 * R)
-    - 0.5 * y * y * Math.sin(4 * L0 * R)
-    - 1.25 * e * e * Math.sin(2 * Mr));
-
-  const date = new Date(Number(dateMs));
-  const utcMinutes = date.getUTCHours() * 60 + date.getUTCMinutes()
-    + date.getUTCSeconds() / 60 + date.getUTCMilliseconds() / 60000;
-  let trueSolarMinutes = (utcMinutes + eqTime + 4 * Number(lng)) % 1440;
-  if (trueSolarMinutes < 0) trueSolarMinutes += 1440;
-  let hourAngle = trueSolarMinutes / 4 - 180;
-  if (hourAngle < -180) hourAngle += 360;
-  const ha = hourAngle * R;
-  const phi = Number(lat) * R;
-  const cosZen = Math.min(1, Math.max(-1,
-    Math.sin(phi) * Math.sin(decl) + Math.cos(phi) * Math.cos(decl) * Math.cos(ha)));
-  const zen = Math.acos(cosZen);
-  let elevation = 90 - zen * D;
-
-  // Réfraction atmosphérique : le soleil paraît plus haut qu'il n'est.
-  // Bloc repris À L'IDENTIQUE de `solar()` dans index.html. Sans lui, les deux
-  // pages décrivaient deux soleils différents : jusqu'à 0,27° d'écart en
-  // élévation à l'approche de l'horizon — exactement le régime où vit le
-  // produit, et où T.high.maxElev vaut 8°. Un écart pareil rendrait un relevé
-  // fait sur journey.html incomparable avec un relevé fait sur index.html.
-  // test-journey-v02.mjs rejoue les deux implémentations l'une contre l'autre
-  // pour qu'elles ne puissent plus diverger en silence.
-  if (elevation > -1 && elevation < 85) {
-    const te = Math.tan(elevation * R);
-    const r = elevation > 5 ? 58.1 / te - 0.07 / te ** 3 + 0.000086 / te ** 5
-      : elevation > -0.575 ? 1735 + elevation * (-518.2 + elevation * (103.4
-          + elevation * (-12.79 + elevation * 0.711)))
-      : -20.772 / te;
-    elevation += r / 3600;
-  }
-
-  const azimuth = mod360(Math.atan2(
-    Math.sin(ha),
-    Math.cos(ha) * Math.sin(phi) - Math.tan(decl) * Math.cos(phi),
-  ) * D + 180);
-
-  return { azimuth, elevation };
-}
+/** Nom historique de `dist()` dans ce module. Même fonction, même résultat. */
+export const haversine = dist;
 
 function pointAtDistance(coords, target) {
   if (!Array.isArray(coords) || coords.length < 2) return null;

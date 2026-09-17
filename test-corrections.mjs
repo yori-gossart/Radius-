@@ -116,7 +116,8 @@ function req0Entetes(req) {
   return h;
 }
 
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml' };
+const MIME = { '.html': 'text/html', '.mjs': 'text/javascript', '.js': 'text/javascript',
+  '.json': 'application/json', '.svg': 'image/svg+xml' };
 const serveur = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const envoyer = (o, s = 200) => { res.writeHead(s, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };

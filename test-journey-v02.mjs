@@ -70,37 +70,27 @@ assert.deepEqual(compassHeadingFromEvent({ alpha: 0, absolute: true }),
 
 console.log('RADIUS V0.2 Journey + Stationary — tests déterministes OK');
 
-/* ── Le Soleil de journey-core doit être CELUI d'index.html ──
-   Deux implémentations NOAA dans le même dépôt, c'est deux soleils qui
-   divergent en silence. À la livraison, journey-core n'appliquait pas la
-   réfraction atmosphérique : jusqu'à 0,27° d'écart en élévation à l'approche
-   de l'horizon — exactement le régime où vit le produit, et où T.high.maxElev
-   vaut 8°. Un relevé fait sur journey.html aurait été incomparable avec un
-   relevé fait sur index.html.
-   La fonction de référence est EXTRAITE d'index.html à l'exécution : un banc
-   qui porte sa propre copie finit par éprouver l'autre version. */
+/* ── Le Soleil de journey-core EST celui d'index.html ──
+   Il n'y a plus deux implémentations à comparer : depuis le 17 septembre 2026
+   elles sont la même fonction, dans radius-core.mjs.
+
+   Ce qu'il faut retenir de l'ancienne version de ce test : elle comparait les
+   deux copies sur SIX cas choisis, où elles s'accordaient à 1e-11 — et ne
+   voyait donc pas qu'elles divergeaient partout ailleurs, jusqu'à 0,27°
+   d'azimut près du zénith. Six points ne prouvent pas une identité ; une seule
+   copie, si. L'accord bit à bit avec le moteur d'avant est éprouvé par
+   test-coeur-commun.mjs sur vingt mille tirages. */
 import fs from 'node:fs';
+import * as coeur from './radius-core.mjs';
 
+assert.equal(solar, coeur.solar, 'journey-core sert le solar du cœur commun');
+assert.equal(signedDelta, coeur.signedDelta, 'et le même signedDelta');
+assert.equal(bearing, coeur.bearing, 'et le même bearing');
 const SRC_INDEX = fs.readFileSync(new URL('./index.html', import.meta.url), 'utf8');
-const corpsSolaire = SRC_INDEX.match(/function solar\(dateMs, lat, lng\) \{[\s\S]*?\n\}\n/);
-assert.ok(corpsSolaire, 'solar() introuvable dans index.html');
-const solarIndex = new Function(
-  'const R = Math.PI / 180, D = 180 / Math.PI;\n' + corpsSolaire[0] + '\nreturn solar;')();
-
-const CAS_SOLAIRES = [
-  ['Paris 21 juin midi solaire', Date.UTC(2026, 5, 21, 11, 52), 48.8566, 2.3522],
-  ['Paris 15 janvier 3 h UTC', Date.UTC(2026, 0, 15, 3, 0), 48.8566, 2.3522],
-  ['Équateur équinoxe midi', Date.UTC(2026, 2, 20, 12, 0), 0, 0],
-  ['La Réunion 21 déc 18h30 locale', Date.UTC(2026, 11, 21, 14, 30), -21.1151, 55.5364],
-  ['Saint-Leu soleil rasant', Date.UTC(2026, 8, 16, 14, 0), -21.17, 55.29],
-  ['Saint-Leu sous l’horizon', Date.UTC(2026, 8, 16, 15, 0), -21.17, 55.29],
-];
-for (const [nom, ms, lat, lng] of CAS_SOLAIRES) {
-  const a = solarIndex(ms, lat, lng);
-  const b = solar(ms, lat, lng);
-  assert.ok(near(a.elevation, b.elevation, 1e-9), `élévation identique à index.html — ${nom}`);
-  assert.ok(near(signedDelta(a.azimuth, b.azimuth), 0, 1e-9), `azimut identique à index.html — ${nom}`);
-}
+assert.ok(/from '\.\/radius-core\.mjs'/.test(SRC_INDEX),
+  'index.html importe le cœur commun');
+assert.ok(!/\nfunction solar\(/.test(SRC_INDEX),
+  'index.html ne porte plus sa propre copie de solar()');
 
 // Les repères du tableau de CLAUDE.md, rejoués sur journey-core.
 const paris = solar(Date.UTC(2026, 5, 21, 11, 52), 48.8566, 2.3522);
