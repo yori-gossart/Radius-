@@ -1,0 +1,63 @@
+# CI de RADIUS — les bancs déterministes, à chaque poussée.
+#
+# Aucune dépendance nouvelle : le dépôt n'a ni package.json ni gestionnaire de
+# paquets, et ce n'est pas la CI qui va en introduire un. Node est déjà présent
+# sur les exécuteurs GitHub ; Playwright ne l'est pas, et ce fichier ne
+# l'installe pas non plus.
+#
+# Ce qui tourne ici : tout ce qui ne demande pas de navigateur. Les bancs
+# navigateur — corrections, aller-retour, figeage, journey — restent à lancer à
+# la main, et le rapport le dit plutôt que de laisser croire que la CI couvre
+# tout. Une CI qui prétend plus qu'elle ne fait est pire que pas de CI.
+
+name: tests déterministes
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  deterministes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # test-coeur-commun compare le cœur à la version d'AVANT, lue dans
+          # git : sans l'historique, il ne peut pas faire son travail.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Bancs sans navigateur
+        run: |
+          set -e
+          for banc in test-route.mjs test-api.mjs test-episodes.mjs \
+                      test-journey-v02.mjs test-pwa.mjs; do
+            echo "::group::$banc"
+            node "$banc"
+            echo "::endgroup::"
+          done
+
+      - name: Cœur scientifique commun
+        # Il lui faut une référence d'avant l'extraction. Sur une branche qui
+        # ne descend pas de radius-v0.2-journey-stationary, on le dit et on
+        # n'échoue pas silencieusement.
+        run: |
+          set -e
+          if git rev-parse --verify origin/radius-v0.2-journey-stationary >/dev/null 2>&1; then
+            node test-coeur-commun.mjs --avant=origin/radius-v0.2-journey-stationary
+          else
+            echo "Référence radius-v0.2-journey-stationary absente : banc non joué."
+            exit 1
+          fi
+
+      - name: Les bancs navigateur ne sont PAS couverts ici
+        run: |
+          echo "Non joués faute de navigateur sur l'exécuteur :"
+          echo "  test-corrections.mjs · test-aller-retour.mjs"
+          echo "  test-figeage.mjs · test-journey-navigateur.mjs"
+          echo "Ils doivent passer avant toute fusion. Voir RADIUS-STABILIZATION-REPORT.md."

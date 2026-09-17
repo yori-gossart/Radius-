@@ -576,6 +576,41 @@ raccroché à des kilomètres passerait donc en silence dans Journey. Ce n'est p
 corrigé ici parce que ce serait une règle de refus nouvelle dans une page qui
 n'en avait pas ; c'est noté pour être décidé, pas oublié.
 
+## Décrire, ne pas conclure — le vocabulaire du niveau 1
+
+Décision du 17 septembre 2026. La pastille de chaque carte disait
+**« Élevé », « Modéré », « Faible »** : trois verdicts posés au-dessus d'un titre
+qui, lui, décrivait déjà la géométrie. Tant que `T` n'est pas calibré sur le
+terrain, nommer un niveau promet ce que rien n'a mesuré — « élevé » se lit
+« ça va t'éblouir », alors que le moteur a seulement constaté un soleil bas dans
+l'axe.
+
+Les mots du niveau 1 disent désormais **ce qui a été constaté**, dans les termes
+mêmes des seuils :
+
+| Niveau brut | Mot affiché |
+|---|---|
+| `high` | très bas, dans l'axe |
+| `moderate` | bas, dans le champ |
+| `low` | bas, de côté |
+
+**Rien ne disparaît** : `high` / `moderate` / `low` restent tels quels au
+niveau 3, avec `elev`, `delta` et `score` qui les ont produits, et
+`niveau max` reste dans le bloc global.
+
+**Une seule table de mots.** L'ancienne en avait trois, dont deux ne servaient
+qu'à accorder un adjectif — et c'est cet accord qui avait produit
+« 2 moments élevées ». La légende dit maintenant « 2 moments · bas, dans le
+champ », sans accord à faire.
+
+« Voir aussi les passages **faibles** » est devenu « passages **moins
+marqués** » : la hiérarchie de lecture reste, le mot de niveau part. `LABEL`,
+déclaré et jamais employé, a été supprimé.
+
+Les phrases **prononcées** n'ont pas changé : elles étaient déjà purement
+géométriques (« Soleil à droite dans 3 minutes »). `journey.html` non plus : il
+n'a jamais porté de mot de niveau.
+
 ## La règle de parole
 
 Le produit parle **par-dessus un GPS qui parle déjà**, et aucun système
