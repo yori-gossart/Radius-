@@ -243,6 +243,15 @@ async function niveau1(sel = '#result') {
   }, sel);
 }
 const journalTexte = () => page.evaluate(() => document.getElementById('log').textContent);
+/** Tout le texte de niveau 1 : le résultat sans les blocs techniques. */
+const niveau1Texte = () => page.evaluate(() => {
+  const n = document.getElementById('result').cloneNode(true);
+  // Les blocs techniques ET tout ce qui est masqué : lire du texte caché
+  // ferait échouer — ou pire, passer — sur ce que personne ne voit.
+  n.querySelectorAll('details, .tech, .hide, #techGlobal, #techEpisodes, #techZones')
+    .forEach((d) => d.remove());
+  return n.textContent.replace(/\s+/g, ' ').trim();
+});
 
 
 await page.goto(base + '/index.html');
@@ -689,6 +698,50 @@ if (veut('J-001')) {
   chk('W12 les prescriptions de conduite sont écrites',
     /Préparez Radius avant de prendre la route/i.test(
       await page.evaluate(() => document.getElementById('apropos').textContent)));
+}
+
+/* ══════════════ UX scientifique — décrire, ne pas conclure ══════════════
+   La pastille disait « Élevé », « Modéré », « Faible » : trois verdicts posés
+   au-dessus d'un titre qui décrivait déjà la géométrie. Tant que T n'est pas
+   calibré, nommer un niveau promet ce que rien n'a mesuré. */
+if (veut('UX-SCI')) {
+  console.log('\n== UX scientifique — aucune conclusion au niveau 1 ==');
+  await page.goto(base + '/index.html');
+  await choisir('from', 'Point A'); await choisir('to', 'Point B');
+  await page.fill('#date', '2026-12-21'); await page.fill('#time', '06:15');
+  await page.click('#analyze'); await attendreFin();
+
+  const niveau1 = await niveau1Texte();
+  for (const verdict of ['Élevé', 'Modéré', 'Faible', 'élevés', 'modérés',
+    'éblouissement', 'éblouissant', 'dangereux', 'risque']) {
+    chk(`niveau 1 — aucun « ${verdict} »`, !new RegExp(verdict, 'i').test(niveau1),
+      (niveau1.match(new RegExp('.{0,25}' + verdict + '.{0,25}', 'i')) || [''])[0]);
+  }
+  const pastilles = await page.$$eval('.zc .chip', (n) => n.map((x) => x.textContent.trim()));
+  chk('les pastilles décrivent la géométrie',
+    pastilles.length > 0 && pastilles.every((t) =>
+      /^(très bas, dans l’axe|bas, dans le champ|bas, de côté)$/.test(t)),
+    pastilles.join(' | '));
+  const legende = await page.textContent('#ligneLegende');
+  chk('la légende décrit aussi, et n’accorde plus d’adjectif',
+    /moments? · (très bas, dans l’axe|bas, dans le champ|bas, de côté)/.test(legende),
+    legende.trim());
+  chk('l’étiquette accessible du rail décrit la géométrie',
+    /soleil (très bas, dans l’axe|bas, dans le champ|bas, de côté)/
+      .test(await page.getAttribute('#ligneRail', 'aria-label') || ''),
+    (await page.getAttribute('#ligneRail', 'aria-label') || '').slice(0, 80));
+
+  // RIEN NE DISPARAÎT : le niveau brut reste au niveau 3, avec ses angles.
+  const zonesTech = await page.$$eval('.techzone', (n) => n.map((x) => x.textContent));
+  chk('le niveau brut est conservé au niveau 3',
+    zonesTech.length > 0
+    && zonesTech.every((t) => /niveau d’exposition géométrique : (high|moderate|low)/.test(t)),
+    (zonesTech[0] || '').split('\n')[0]);
+  chk('les angles qui l’ont produit aussi',
+    zonesTech.every((t) => /elev -?\d+\.\d+° · delta -?\d+\.\d+° · score \d/.test(t)));
+  chk('le verdict global reste lisible au niveau 3',
+    /niveau max (high|moderate|low|none)/.test(await page.textContent('#techGlobal')),
+    ((await page.textContent('#techGlobal')).match(/niveau max [a-z]+/) || ['(absent)'])[0]);
 }
 
 console.log(`\n${ok} contrôle(s) PASS, ${ko} ÉCHEC.`);

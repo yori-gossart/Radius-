@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#10151B">
-<title>Éblouissement — anticipation solaire</title>
+<title>RADIUS — anticipation solaire</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -603,7 +603,6 @@ function classify(elev, delta) {
 }
 
 const RANK = { none: 0, low: 1, moderate: 2, high: 3 };
-const LABEL = { low: 'Faible', moderate: 'Modéré', high: 'Élevé' };
 
 /* ═══════════════════════════════════════════════════════════
    4. ANALYSE D'UN TRAJET
@@ -1780,9 +1779,25 @@ function fmtDuree(secondes) {
   return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}` : `${m} min`;
 }
 
-const MOT_NIVEAU = { high: 'Élevé', moderate: 'Modéré', low: 'Faible' };
-const MOT_NIVEAU_F = { high: 'élevée', moderate: 'modérée', low: 'faible' };
-const MOT_NIVEAU_M = { high: 'élevé', moderate: 'modéré', low: 'faible' };
+/* La pastille disait « Élevé », « Modéré », « Faible » — trois verdicts posés
+   au-dessus d'un titre qui, lui, décrivait déjà la géométrie. Tant que T n'est
+   pas calibré sur le terrain, nommer un niveau promet ce que rien n'a mesuré :
+   « élevé » se lit comme « ça va t'éblouir », alors que le moteur a seulement
+   constaté un soleil bas dans l'axe.
+
+   Les mots ci-dessous disent donc CE QUI A ÉTÉ CONSTATÉ, dans les termes mêmes
+   des seuils : au-dessus de 8° d'élévation ou 12° d'écart on n'est plus « dans
+   l'axe », au-delà de 15°/25° on n'est plus « dans le champ ». Le niveau brut
+   (`high`, `moderate`, `low`) n'est pas supprimé pour autant : il reste tel quel
+   au niveau 3, avec les angles qui l'ont produit.
+
+   Une seule table : l'ancienne en avait trois, dont deux pour accorder un
+   adjectif — c'est cet accord qui avait produit « 2 moments élevées ». */
+const MOT_NIVEAU = {
+  high: 'très bas, dans l’axe',
+  moderate: 'bas, dans le champ',
+  low: 'bas, de côté',
+};
 
 /* La phrase d'une zone. Descriptive, jamais conclusive : « Éblouissement fort »
    affirmerait une gêne vécue, que rien n'a encore mesurée. On décrit une
@@ -1939,7 +1954,7 @@ function dessinerLigne(r, totalM, episodes) {
     m.style.left = g.toFixed(2) + '%';
     m.style.width = l.toFixed(2) + '%';
     rail.appendChild(m);
-    parts.push(`zone ${MOT_NIVEAU_F[z.level]} ${tiers(z.startD)}`);
+    parts.push(`soleil ${MOT_NIVEAU[z.level]} ${tiers(z.startD)}`);
   }
   rail.setAttribute('aria-label', 'Position des zones sur le trajet : ' + parts.join(', ') + '.');
   // Les marques dessinent les ZONES — la vérité géométrique, trous compris.
@@ -1950,7 +1965,7 @@ function dessinerLigne(r, totalM, episodes) {
   $('ligneLegende').innerHTML = ['high', 'moderate', 'low']
     .filter((k) => compte[k])
     .map((k) => `<span><span class="dot ${k}"></span>${compte[k]} ${
-      compte[k] > 1 ? 'moments' : 'moment'} ${MOT_NIVEAU_M[k]}${compte[k] > 1 ? 's' : ''}</span>`)
+      compte[k] > 1 ? 'moments' : 'moment'} · ${MOT_NIVEAU[k]}</span>`)
     .join('');
 }
 
@@ -2080,7 +2095,7 @@ function render() {
   } else if (faibles.length) {
     $('bilanGrand').textContent = 'Quelques passages avec soleil bas';
     $('bilanSous').innerHTML = `${faibles.length} passage${faibles.length > 1 ? 's' : ''} `
-      + 'de niveau faible. Aucun moment important détecté.';
+      + 'où le soleil est bas sans être dans l’axe. Aucun moment important détecté.';
     $('bilanTiers').textContent = '';
   } else {
     $('bilanGrand').textContent = 'Aucun moment important détecté';
@@ -2100,7 +2115,7 @@ function render() {
     $('zoneFaibles').classList.remove('hide');
   } else {
     $('zoneFaibles').classList.add('hide');
-    bouton.textContent = `Voir aussi les passages faibles (${faibles.length})`;
+    bouton.textContent = `Voir aussi les passages moins marqués (${faibles.length})`;
     bouton.setAttribute('aria-expanded', 'false');
   }
 
@@ -2123,7 +2138,8 @@ $('voirFaibles').onclick = () => {
   const ouvert = z.classList.toggle('hide') === false;
   b.setAttribute('aria-expanded', String(ouvert));
   const n = z.querySelectorAll('.zc').length;
-  b.textContent = ouvert ? 'Masquer les passages faibles' : `Voir aussi les passages faibles (${n})`;
+  b.textContent = ouvert ? 'Masquer les passages moins marqués'
+    : `Voir aussi les passages moins marqués (${n})`;
 };
 
 /* Journal du relief. Vocabulaire de debug assumé : il vit désormais au
