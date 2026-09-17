@@ -7,7 +7,7 @@
 <title>RADIUS — Journey + Stationary</title>
 <style>
 :root{--bg:#10151B;--panel:#19202A;--panel2:#141A22;--edge:#2A3441;--ink:#ECF1F6;--muted:#8290A3;--sky:#81ADD2;--amber:#FFB43A;--ok:#5FC2A8;--bad:#FF7557;--mono:ui-monospace,SFMono-Regular,Menlo,monospace;--sans:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 var(--sans)}body{padding-bottom:max(28px,env(safe-area-inset-bottom))}.wrap{max-width:620px;margin:auto;padding:0 16px}header{padding:22px 0 15px;border-bottom:1px solid var(--edge);margin-bottom:18px}.eyebrow{font:11px/1.3 var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}h1{margin:6px 0 3px;font-size:28px;line-height:1.08}.sub{margin:0;color:var(--muted);font-size:14px}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0}.tab{border:1px solid var(--edge);background:var(--panel2);color:var(--ink);padding:12px 8px;border-radius:10px;font-weight:700}.tab.active{background:var(--sky);border-color:var(--sky);color:#081018}.card{background:var(--panel);border:1px solid var(--edge);border-radius:13px;padding:16px;margin:0 0 14px}.card h2{font-size:20px;margin:0 0 5px}.card h3{font-size:17px;margin:0 0 8px}.note{font-size:13px;color:var(--muted);margin:0}.field{margin:0 0 14px}label{display:block;font:11px/1.3 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}input,select{width:100%;background:var(--panel2);color:var(--ink);border:1px solid var(--edge);border-radius:9px;padding:12px 12px;font:16px/1.2 var(--sans);outline:none}input:focus,select:focus{border-color:var(--sky);box-shadow:0 0 0 3px #81add226}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stack{display:grid;gap:8px}.btn{width:100%;border:0;border-radius:9px;padding:13px 14px;background:var(--sky);color:#071017;font-weight:800;font-size:16px}.btn.secondary{background:transparent;color:var(--ink);border:1px solid var(--edge)}.btn.amber{background:var(--amber);color:#1C1202}.btn.small{padding:10px 12px;font-size:14px}.btn:disabled{opacity:.45}.check{display:flex;align-items:center;gap:9px;margin:4px 0 15px}.check input{width:auto}.status{font:12px/1.45 var(--mono);color:var(--muted);min-height:18px;margin:10px 0 0}.status.err{color:var(--bad)}.status.ok{color:var(--ok)}.hidden{display:none!important}.summary{display:grid;gap:9px}.summary .phase{border-left:3px solid var(--sky);background:var(--panel2);padding:12px 13px;border-radius:9px}.summary .phase.stationary{border-left-color:var(--ok)}.summary .phase.return{border-left-color:var(--amber)}.phase b{display:block;font-size:16px}.phase span{display:block;color:var(--muted);font-size:13px;margin-top:2px}.timeline{display:grid;gap:8px;margin-top:10px}.point{border-top:1px solid var(--edge);padding-top:10px;display:grid;grid-template-columns:72px 1fr;gap:10px}.time{font:14px/1.4 var(--mono);color:var(--sky)}.point p{margin:0 0 4px;font-size:14px}.metrics{font:12px/1.45 var(--mono);color:var(--muted)}.sun{color:var(--amber)}.section-title{font:11px/1.3 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:18px 0 8px}#rose{display:block;width:100%;max-width:280px;margin:2px auto;height:auto}.vues{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:0 0 10px}.vues .tab{padding:9px 6px;font-size:13px;font-weight:700}.devant{text-align:center;margin:0;font:12px/1.3 var(--mono);letter-spacing:.14em;color:var(--sky)}.rosequand{text-align:center;margin:0 0 10px}#headingLigne{margin:11px 0 3px;font:14px/1.3 var(--sans);color:var(--muted)}#heading{font:17px/1.2 var(--mono);color:var(--ink)}.live{font-size:14px;margin:0}.attrib{font:10px/1.5 var(--mono);color:var(--muted);margin:12px 0 0}.warn{border:1px solid #ffb43a55;background:#ffb43a0d;color:#eecb8e;border-radius:9px;padding:10px 12px;font-size:13px;margin:10px 0}.pill{display:inline-block;padding:3px 8px;border:1px solid var(--edge);border-radius:999px;font:10px var(--mono);color:var(--muted);margin-right:4px}.footer{font-size:12px;color:var(--muted);padding:6px 0 20px}details{border-top:1px solid var(--edge);margin-top:12px;padding-top:8px}summary{cursor:pointer;color:var(--muted);font:11px var(--mono);text-transform:uppercase;letter-spacing:.1em}pre{white-space:pre-wrap;word-break:break-word;font:11px/1.5 var(--mono);color:var(--muted)}@media(max-width:430px){.row{grid-template-columns:1fr}#heading{font:16px/1.2 var(--mono)}.point{grid-template-columns:64px 1fr}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 var(--sans)}body{padding-bottom:max(28px,env(safe-area-inset-bottom))}.wrap{max-width:620px;margin:auto;padding:0 16px}header{padding:22px 0 15px;border-bottom:1px solid var(--edge);margin-bottom:18px}.eyebrow{font:11px/1.3 var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}h1{margin:6px 0 3px;font-size:28px;line-height:1.08}.sub{margin:0;color:var(--muted);font-size:14px}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0}.tab{border:1px solid var(--edge);background:var(--panel2);color:var(--ink);padding:12px 8px;border-radius:10px;font-weight:700}.tab.active{background:var(--sky);border-color:var(--sky);color:#081018}.card{background:var(--panel);border:1px solid var(--edge);border-radius:13px;padding:16px;margin:0 0 14px}.card h2{font-size:20px;margin:0 0 5px}.card h3{font-size:17px;margin:0 0 8px}.note{font-size:13px;color:var(--muted);margin:0}.field{margin:0 0 14px}label{display:block;font:11px/1.3 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}input,select{width:100%;background:var(--panel2);color:var(--ink);border:1px solid var(--edge);border-radius:9px;padding:12px 12px;font:16px/1.2 var(--sans);outline:none}input:focus,select:focus{border-color:var(--sky);box-shadow:0 0 0 3px #81add226}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stack{display:grid;gap:8px}.btn{width:100%;border:0;border-radius:9px;padding:13px 14px;background:var(--sky);color:#071017;font-weight:800;font-size:16px}.btn.secondary{background:transparent;color:var(--ink);border:1px solid var(--edge)}.btn.amber{background:var(--amber);color:#1C1202}.btn.small{padding:10px 12px;font-size:14px}.btn:disabled{opacity:.45}.check{display:flex;align-items:center;gap:9px;margin:4px 0 15px}.check input{width:auto}.status{font:12px/1.45 var(--mono);color:var(--muted);min-height:18px;margin:10px 0 0}.status.err{color:var(--bad)}.status.ok{color:var(--ok)}.hidden{display:none!important}.summary{display:grid;gap:9px}.summary .phase{border-left:3px solid var(--sky);background:var(--panel2);padding:12px 13px;border-radius:9px}.summary .phase.stationary{border-left-color:var(--ok)}.summary .phase.return{border-left-color:var(--amber)}.phase b{display:block;font-size:16px}.phase span{display:block;color:var(--muted);font-size:13px;margin-top:2px}.timeline{display:grid;gap:8px;margin-top:10px}.point{border-top:1px solid var(--edge);padding-top:10px;display:grid;grid-template-columns:72px 1fr;gap:10px}.time{font:14px/1.4 var(--mono);color:var(--sky)}.point p{margin:0 0 4px;font-size:14px}.metrics{font:12px/1.45 var(--mono);color:var(--muted)}.sun{color:var(--amber)}.section-title{font:11px/1.3 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:18px 0 8px}#rose{display:block;width:100%;max-width:280px;margin:2px auto;height:auto}.vues{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:0 0 10px}.vues .tab{padding:9px 6px;font-size:13px;font-weight:700}.devant{text-align:center;margin:0;font:12px/1.3 var(--mono);letter-spacing:.14em;color:var(--sky)}.fige{text-align:center;margin:0 0 8px;padding:7px 10px;border:1px dashed var(--amber);border-radius:8px;font:12px/1.35 var(--mono);color:var(--amber);background:#ffb43a0d}#rose.fige-actif{outline:2px dashed #FFB43A66;outline-offset:-3px;border-radius:10px}.rosequand{text-align:center;margin:0 0 10px}#headingLigne{margin:11px 0 3px;font:14px/1.3 var(--sans);color:var(--muted)}#heading{font:17px/1.2 var(--mono);color:var(--ink)}.live{font-size:14px;margin:0}.attrib{font:10px/1.5 var(--mono);color:var(--muted);margin:12px 0 0}.warn{border:1px solid #ffb43a55;background:#ffb43a0d;color:#eecb8e;border-radius:9px;padding:10px 12px;font-size:13px;margin:10px 0}.pill{display:inline-block;padding:3px 8px;border:1px solid var(--edge);border-radius:999px;font:10px var(--mono);color:var(--muted);margin-right:4px}.footer{font-size:12px;color:var(--muted);padding:6px 0 20px}details{border-top:1px solid var(--edge);margin-top:12px;padding-top:8px}summary{cursor:pointer;color:var(--muted);font:11px var(--mono);text-transform:uppercase;letter-spacing:.1em}pre{white-space:pre-wrap;word-break:break-word;font:11px/1.5 var(--mono);color:var(--muted)}@media(max-width:430px){.row{grid-template-columns:1fr}#heading{font:16px/1.2 var(--mono)}.point{grid-template-columns:64px 1fr}}
 </style>
 </head>
 <body>
@@ -89,6 +89,7 @@
       <button class="btn" id="prevoir">Prévoir à ce point</button>
       <button class="btn secondary hidden" id="arreterGps">Arrêter l’acquisition</button>
       <button class="btn secondary" id="compassBtn">Activer la boussole</button>
+      <button class="btn secondary hidden" id="figerCap">Figer cette orientation</button>
     </div>
     <div id="stationaryStatus" class="status"></div>
     <p id="gpsQualite" class="note hidden"></p>
@@ -101,12 +102,13 @@
       <button class="tab active" id="vueFace">Vue face à moi</button>
       <button class="tab" id="vueNord">Vue Nord</button>
     </div>
+    <p class="fige hidden" id="capFigeBandeau"></p>
     <p class="devant" id="roseHaut">↑ DEVANT MOI</p>
     <svg id="rose" viewBox="0 0 200 200" role="img" aria-label="Rose de direction"></svg>
     <p class="note rosequand" id="roseQuand"></p>
     <p class="live sun" id="liveSun">Oriente le téléphone pour situer le Soleil.</p>
     <p class="note" id="liveSunNote"></p>
-    <p id="headingLigne">Orientation actuelle : <span id="heading">En attente</span></p>
+    <p id="headingLigne"><span id="headingEtiq">Orientation actuelle : </span><span id="heading">En attente</span></p>
     <p class="note" id="headingQuoi">Direction vers laquelle pointe le haut du téléphone.</p>
     <p class="note" id="compassQuality">La boussole complète le mode fixe ; sur route, RADIUS privilégie le cap du trajet/GPS.</p>
     <details><summary>Détails techniques</summary><pre id="compassTech">Aucune mesure d’orientation reçue.</pre></details>
@@ -135,7 +137,7 @@ import { routeSamples, stationarySamples, solar, sunRelativeLabel, compassHeadin
   angleRose, vueEffectiveRose } from './journey-core.mjs';
 
 const $ = (id) => document.getElementById(id);
-const state = { originPoint:null, stationaryPoint:null, stationarySamples:null, stationaryWx:null, heading:null, compassAbsolute:false, compassStarted:false, compassSource:null, vueRose:'face', abandonGps:null, statMaintenant:false, statHorizon:0, statDebutMs:NaN, lastTimelineHeading:null };
+const state = { originPoint:null, stationaryPoint:null, stationarySamples:null, stationaryWx:null, heading:null, compassAbsolute:false, compassStarted:false, compassSource:null, vueRose:'face', abandonGps:null, capFige:null, figeA:null, statMaintenant:false, statHorizon:0, statDebutMs:NaN, lastTimelineHeading:null };
 const fmtTime = new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'});
 const fmtDate = new Intl.DateTimeFormat('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'});
 const fmtKm = (m) => `${(Number(m||0)/1000).toFixed(Number(m||0)>=10000?0:1)} km`;
@@ -275,12 +277,12 @@ function renderStationaryTimeline(){
   }else{
     $('instantBloc').classList.add('hidden');$('instantBloc').innerHTML='';
     $('stationaryTimeline').innerHTML=state.stationarySamples
-      .map((s,i)=>pointHtml(s,wx[i],state.heading)).join('');
+      .map((s,i)=>pointHtml(s,wx[i],capCourant())).join('');
   }
-  $('prevOrientation').textContent=Number.isFinite(state.heading)
-    ?`Position du Soleil donnée par rapport à ${directionLisible(state.heading)} — la direction vers laquelle pointe le haut du téléphone en ce moment, pas celle d’un véhicule.`
+  $('prevOrientation').textContent=Number.isFinite(nombreStrict(capCourant()))
+    ?`Position du Soleil donnée par rapport à ${directionLisible(capCourant())} — la direction vers laquelle pointe le haut du téléphone en ce moment, pas celle d’un véhicule.`
     :'Active la boussole pour situer le Soleil par rapport à la direction que tu regardes.';
-  state.lastTimelineHeading=state.heading;
+  state.lastTimelineHeading=capCourant();
 }
 
 /** « Instant précis » : tout ce que RADIUS sait de cet instant-là, en clair.
@@ -294,9 +296,10 @@ function carteInstant(sample,w){
   // Astronomie : valable à n'importe quelle date, indépendamment de la météo.
   ligne('Soleil',`<b>${esc(sunRelativeLabel(null,sun))}</b><br>`
     +`élévation ${sun.elevation.toFixed(1)}° · azimut ${sun.azimuth.toFixed(0)}° (${esc(cardinalDe(sun.azimuth))})`);
-  if(Number.isFinite(state.heading)){
-    ligne('Vu d’ici',`<b>${esc(sunRelativeLabel(state.heading,sun))}</b><br>`
-      +`par rapport à ${esc(directionLisible(state.heading))}, direction du haut du téléphone`);
+  if(Number.isFinite(nombreStrict(capCourant()))){
+    ligne('Vu d’ici',`<b>${esc(sunRelativeLabel(capCourant(),sun))}</b><br>`
+      +`par rapport à ${esc(directionLisible(capCourant()))}, `
+      +`direction ${estFige()?'figée du haut du téléphone':'du haut du téléphone'}`);
   }else{
     ligne('Vu d’ici','Boussole non activée — aucune direction de référence.');
   }
@@ -408,6 +411,7 @@ function texteFenetre(v){
 }
 $('prevoir').onclick=planStationary;
 $('arreterGps').onclick=()=>{ if(state.abandonGps)state.abandonGps(); };
+$('figerCap').onclick=()=>{ estFige()?reprendreCap():figerCap(); };
 $('statMaintenant').onclick=statMaintenant;
 $('statDate').addEventListener('input',()=>{state.statMaintenant=false});
 $('statTime').addEventListener('input',()=>{state.statMaintenant=false});
@@ -416,7 +420,9 @@ $('statTime').addEventListener('input',()=>{state.statMaintenant=false});
    Rien ne disparaît — la phase reste une phase de mesure, et un relevé
    impossible à reconstituer est un relevé perdu. */
 function updateLiveSun(){
-  if(Number.isFinite(state.heading))$('heading').textContent=directionLisible(state.heading);
+  const capAffiche=capCourant();
+  if(Number.isFinite(nombreStrict(capAffiche)))$('heading').textContent=directionLisible(capAffiche);
+  $('headingEtiq').textContent=estFige()?'Orientation figée : ':'Orientation actuelle : ';
   if(!state.stationaryPoint){$('compassTech').textContent=orientationTech(null);dessinerRose();return}
   // La phrase décrit LE MÊME instant que la rose, sinon l'écran se contredit :
   // une rose qui montre un Soleil couché au-dessus d'un « Soleil à droite » se
@@ -431,11 +437,11 @@ function updateLiveSun(){
   if(sun.elevation<=-0.833){
     $('liveSun').textContent='Soleil couché';
     $('liveSunNote').textContent=`Aucune exposition solaire ${quand}.`;
-  }else if(!Number.isFinite(state.heading)){
+  }else if(!Number.isFinite(nombreStrict(capAffiche))){
     $('liveSun').textContent='Soleil levé';
     $('liveSunNote').textContent='Active la boussole pour savoir de quel côté il se trouve.';
   }else{
-    $('liveSun').textContent=sunRelativeLabel(state.heading,sun);
+    $('liveSun').textContent=sunRelativeLabel(capAffiche,sun);
     $('liveSunNote').textContent=simule
       ?'Par rapport à la direction que tu regardes maintenant, à l’heure choisie.'
       :'Par rapport à la direction que tu regardes.';
@@ -459,6 +465,53 @@ const CARDINAUX_ROSE = [['N', 0], ['E', 90], ['S', 180], ['O', 270]];
 /** L'instant représenté : l'heure d'observation analysée si elle existe,
     l'heure courante sinon. Le dire à l'écran, sinon la rose mélangerait deux
     horloges sans prévenir — la flèche du téléphone, elle, est toujours « maintenant ». */
+/* ---- orientation figée ----
+   Relever le terrain en tenant le téléphone immobile est irréaliste : on
+   regarde l'écran, donc on bouge. Figer l'orientation permet de noter ce qu'on
+   voyait en regardant DANS une direction, puis de lire tranquillement.
+
+   `state.heading` reste la mesure du capteur, et garde son affectation unique.
+   Le gel vit dans `state.capFige` : une SECONDE variable, jamais une écriture
+   déguisée dans la première. Tout l'affichage lit capCourant(), pour qu'aucun
+   écran ne puisse montrer l'une pendant qu'un autre montre l'autre.
+
+   Une orientation absente ne devient jamais 0° : `null` reste `null` et la vue
+   face retombe au Nord, comme sans boussole. */
+function capCourant(){ return state.capFige!==null?state.capFige:state.heading; }
+const estFige = () => state.capFige!==null;
+
+function figerCap(){
+  const c=state.heading;
+  if(!Number.isFinite(nombreStrict(c))){
+    setStatus($('stationaryStatus'),'Rien à figer : la boussole n’a encore donné aucune mesure.','err');
+    return;
+  }
+  state.capFige=c; state.figeA=Date.now();
+  majBandeauFige(); updateLiveSun();
+}
+function reprendreCap(){
+  state.capFige=null; state.figeA=null;
+  majBandeauFige(); updateLiveSun();
+}
+function majBandeauFige(){
+  const b=$('capFigeBandeau'), bouton=$('figerCap'), svg=$('rose');
+  if(!state.compassStarted){
+    bouton.classList.add('hidden'); b.classList.add('hidden');
+    if(svg)svg.classList.remove('fige-actif');
+    return;
+  }
+  bouton.classList.remove('hidden');
+  bouton.textContent=estFige()?'Reprendre la boussole en direct':'Figer cette orientation';
+  if(svg)svg.classList.toggle('fige-actif',estFige());
+  if(!estFige()){ b.classList.add('hidden'); b.textContent=''; return; }
+  const vivant=Number.isFinite(nombreStrict(state.heading))
+    ?directionLisible(state.heading):'aucune mesure';
+  b.textContent=`⏸ ORIENTATION FIGÉE à ${directionLisible(state.capFige)}`
+    +` · figée à ${fmtTime.format(new Date(state.figeA))}`
+    +` · la boussole, elle, indique ${vivant}`;
+  b.classList.remove('hidden');
+}
+
 function instantRose(){
   return Number.isFinite(state.statDebutMs)?state.statDebutMs:Date.now();
 }
@@ -468,7 +521,7 @@ function dessinerRose(){
   const t=instantRose();
   const p=state.stationaryPoint;
   const sun=p?solar(t,p.lat,p.lng):null;
-  const cap=Number.isFinite(state.heading)?state.heading:null;
+  const cap=Number.isFinite(nombreStrict(capCourant()))?capCourant():null;
   const couche=sun?sun.elevation<=-0.833:false;
   const delta=(sun&&cap!==null)?signedDelta(cap,sun.azimuth):null;
   const secteur=delta===null?null:secteurRelatif(delta);
@@ -477,8 +530,8 @@ function dessinerRose(){
   // signedDelta(cap, azimut) : 0 devant, +90 à droite, ±180 derrière. En vue
   // « Nord » elle rend l'azimut absolu. Rien de scientifique ne change — même
   // azimut solaire, même cap, seule la projection à l'écran diffère.
-  const vue=vueEffectiveRose(state.vueRose,state.heading);
-  const ang=(azimut)=>angleRose(azimut,state.heading,state.vueRose);
+  const vue=vueEffectiveRose(state.vueRose,cap);
+  const ang=(azimut)=>angleRose(azimut,cap,state.vueRose);
 
   const el=[];
   el.push(`<circle cx="${ROSE_C}" cy="${ROSE_C}" r="${ROSE_R}" fill="#141A22" stroke="#2A3441"/>`);
@@ -609,17 +662,25 @@ function etiquetteRose(sun,cap,secteur,couche,vue){
 
 function orientationTech(sun){
   const l=[];
-  l.push(Number.isFinite(state.heading)
-    ? `Cap téléphone ${state.heading.toFixed(1)}° · ${directionLisible(state.heading)}`
-    : 'Cap téléphone — aucune mesure reçue');
+  l.push(Number.isFinite(nombreStrict(state.heading))
+    ? `Cap téléphone (capteur, en direct) ${state.heading.toFixed(1)}° · ${directionLisible(state.heading)}`
+    : 'Cap téléphone (capteur, en direct) — aucune mesure reçue');
+  l.push(estFige()
+    ? `Cap FIGÉ ${state.capFige.toFixed(1)}° · ${directionLisible(state.capFige)}`
+      + ` · figé à ${new Date(state.figeA).toISOString()}`
+      + ` · dérive depuis le gel ${Number.isFinite(nombreStrict(state.heading))
+          ? signedDelta(state.capFige,state.heading).toFixed(1)+'°' : 'inconnue'}`
+    : 'Cap figé — non, la boussole est en direct');
+  l.push(`Cap employé par l’affichage : ${Number.isFinite(nombreStrict(capCourant()))
+    ? capCourant().toFixed(1)+'° ('+(estFige()?'figé':'direct')+')' : 'aucun'}`);
   l.push(`Orientation ${state.compassStarted
     ? (state.compassAbsolute ? 'absolue (référencée au nord)' : 'relative/estimée (pas un vrai nord magnétique)')
     : 'non activée'}`
     + (state.compassSource?` · source ${state.compassSource}`:''));
   if(sun){
     l.push(`Soleil azimut ${sun.azimuth.toFixed(2)}° · élévation ${sun.elevation.toFixed(2)}°`);
-    if(Number.isFinite(state.heading)){
-      const d=signedDelta(state.heading,sun.azimuth);
+    if(Number.isFinite(nombreStrict(capCourant()))){
+      const d=signedDelta(capCourant(),sun.azimuth);
       l.push(`Écart cap→Soleil ${d.toFixed(1)}° (positif = à droite)`
         + ` · secteur ${secteurRelatif(d)}`);
     }
@@ -654,9 +715,13 @@ function onOrientation(e){
   $('compassQuality').textContent=h.absolute
     ?'Orientation absolue, référencée au nord par le téléphone. Sur route, RADIUS garde le cap du trajet/GPS.'
     :'Orientation relative/estimée : ce n’est pas un vrai nord magnétique. À utiliser comme aide, jamais comme cap de référence.';
+  majBandeauFige();
   updateLiveSun();
-  if(state.stationarySamples&&(!Number.isFinite(state.lastTimelineHeading)||Math.abs(signedDelta(state.lastTimelineHeading,h.heading))>=5))renderStationaryTimeline()}
-async function startCompass(){try{if(typeof DeviceOrientationEvent==='undefined')throw new Error('Capteur d’orientation non disponible dans ce navigateur.');if(typeof DeviceOrientationEvent.requestPermission==='function'){const permission=await DeviceOrientationEvent.requestPermission();if(permission!=='granted')throw new Error('Permission de boussole refusée.')}window.addEventListener('deviceorientationabsolute',onOrientation,true);window.addEventListener('deviceorientation',onOrientation,true);state.compassStarted=true;$('liveCard').classList.remove('hidden');setStatus($('stationaryStatus'),'Boussole activée. Oriente le haut du téléphone vers la direction regardée.','ok')}catch(e){setStatus($('stationaryStatus'),e.message,'err')}}
+  const c=capCourant();
+  if(state.stationarySamples&&Number.isFinite(nombreStrict(c))
+    &&(!Number.isFinite(state.lastTimelineHeading)
+      ||Math.abs(signedDelta(state.lastTimelineHeading,c))>=5))renderStationaryTimeline()}
+async function startCompass(){try{if(typeof DeviceOrientationEvent==='undefined')throw new Error('Capteur d’orientation non disponible dans ce navigateur.');if(typeof DeviceOrientationEvent.requestPermission==='function'){const permission=await DeviceOrientationEvent.requestPermission();if(permission!=='granted')throw new Error('Permission de boussole refusée.')}window.addEventListener('deviceorientationabsolute',onOrientation,true);window.addEventListener('deviceorientation',onOrientation,true);state.compassStarted=true;$('liveCard').classList.remove('hidden');majBandeauFige();setStatus($('stationaryStatus'),'Boussole activée. Oriente le haut du téléphone vers la direction regardée.','ok')}catch(e){setStatus($('stationaryStatus'),e.message,'err')}}
 $('compassBtn').onclick=startCompass;
 
 initClock();

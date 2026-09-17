@@ -580,8 +580,10 @@ assert.equal(angleRose(NaN, 150, 'face'), null, 'aucun angle sans azimut');
   assert.ok(/Orientation actuelle :/.test(j), 'l’orientation actuelle est étiquetée');
   // UNE seule projection : tout passe par ang(), rien ne reste en absolu.
   const rose = nu.slice(nu.indexOf('functiondessinerRose'), nu.indexOf('functionbasculerVue'));
-  assert.ok(/constang=\(azimut\)=>angleRose\(azimut,state\.heading,state\.vueRose\)/.test(rose),
-    'une seule projection, nommée');
+  assert.ok(/constang=\(azimut\)=>angleRose\(azimut,cap,state\.vueRose\)/.test(rose),
+    'une seule projection, nommée, alimentée par le cap courant (figé ou direct)');
+  assert.ok(/constcap=Number\.isFinite\(nombreStrict\(capCourant\(\)\)\)\?capCourant\(\):null/.test(rose),
+    'et ce cap vient de l’accesseur unique, lu strictement');
   for (const brut of ['pointRose(deg,', 'pointRose(cap,', 'pointRose(sun.azimuth,', 'pointRose(d,']) {
     assert.ok(!rose.includes(brut.replace(/\s/g, '')),
       `plus aucun tracé en azimut absolu : ${brut}`);
@@ -667,6 +669,43 @@ assert.deepEqual(meilleurePosition({ accuracy: 0 }, { accuracy: 5 }), { accuracy
   // Elle ne bloque pas : une précision médiocre est rendue quand même.
   assert.ok(/if\(meilleure\)resolve/.test(nu),
     'une position médiocre est rendue plutôt que rejetée');
+}
+
+/* ── Orientation figée (17 septembre 2026) ──
+   Relever le terrain en tenant le téléphone immobile est irréaliste : on
+   regarde l'écran, donc on bouge. */
+{
+  const j = fs.readFileSync(new URL('./journey.html', import.meta.url), 'utf8');
+  const nu = j.replace(/\s/g, '');
+  assert.ok(/id="figerCap"/.test(j), 'le bouton de gel existe');
+  assert.ok(/Figer cette orientation/.test(j) && /Reprendre la boussole en direct/.test(j),
+    'les deux libellés demandés');
+  assert.ok(/id="capFigeBandeau"/.test(j), 'un bandeau distingue le figé du direct');
+  assert.ok(/ORIENTATION FIGÉE à/.test(j), 'et il le dit en toutes lettres');
+
+  // LE POINT QUI COMPTE : le gel est une SECONDE variable, jamais une écriture
+  // déguisée dans la mesure du capteur.
+  const affectations = nu.match(/state\.heading=[^;,)]*/g) || [];
+  assert.deepEqual(affectations, ['state.heading=h.heading'],
+    'state.heading reste la mesure du capteur, et rien d’autre');
+  assert.ok(/state\.capFige=c;/.test(nu) && /state\.capFige=null;/.test(nu),
+    'le gel vit dans state.capFige');
+
+  // Tout l'affichage lit le MÊME cap : aucun écran ne peut montrer l'un
+  // pendant qu'un autre montre l'autre.
+  assert.ok(/functioncapCourant\(\)\{returnstate\.capFige!==null\?state\.capFige:state\.heading;\}/.test(nu),
+    'un seul accesseur décide du cap affiché');
+  for (const lecteur of ['ang=(azimut)=>angleRose(azimut,cap,', 'sunRelativeLabel(capAffiche,sun)',
+    'pointHtml(s,wx[i],capCourant())', 'sunRelativeLabel(capCourant(),sun)']) {
+    assert.ok(nu.includes(lecteur.replace(/\s/g, '')), `l’affichage lit le cap courant : ${lecteur}`);
+  }
+  // Le niveau 3 conserve LES DEUX, plus la dérive.
+  assert.ok(/CapFIGÉ/.test(nu) && /capteur,endirect/.test(nu) && /dérivedepuislegel/.test(nu),
+    'le niveau 3 garde la mesure vivante, le gel et l’écart entre les deux');
+  // Une absence ne devient jamais 0°.
+  assert.ok(/if\(!Number\.isFinite\(nombreStrict\(c\)\)\)\{/.test(nu),
+    'on ne fige pas une mesure absente');
+  assert.ok(!/state\.capFige=0/.test(nu), 'aucun cap de 0° posé d’office');
 }
 
 console.log('RADIUS V0.2 Journey + Stationary — Soleil aligné sur index.html, échéances et règles figées OK');

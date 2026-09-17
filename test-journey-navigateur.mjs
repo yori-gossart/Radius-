@@ -466,7 +466,8 @@ chk('l’élévation brute est conservée au niveau 3', /élévation -?\d+\.\d+�
 chk('le type d’orientation est conservé au niveau 3',
   /Orientation absolue \(référencée au nord\)/.test(tech),
   (tech.match(/Orientation[^\n]*/) || ['(absent)'])[0]);
-chk('le cap brut est conservé au niveau 3', /Cap téléphone 150\.0°/.test(tech),
+chk('le cap brut est conservé au niveau 3',
+  /Cap téléphone \(capteur, en direct\) 150\.0°/.test(tech),
   (tech.match(/Cap téléphone[^\n]*/) || ['(absent)'])[0]);
 chk('la précision GPS et son seuil sont conservés au niveau 3',
   /précision 2000 m · seuil relevé fiable 100 m/.test(tech),
@@ -562,7 +563,11 @@ async function etatRose() {
   const t = await page.textContent('#compassTech');
   const pt = t.match(/Point (-?\d+\.\d+), (-?\d+\.\d+)/);
   const inst = t.match(/instant représenté (\S+)/);
-  const cap = t.match(/Cap téléphone (-?\d+\.\d+)°/);
+  /* On lit le cap RÉELLEMENT employé par l'affichage, pas celui du capteur :
+     depuis le gel d'orientation les deux peuvent différer, et c'est le premier
+     qui explique ce qui est dessiné. */
+  const cap = t.match(/Cap employé par l’affichage : (-?\d+\.\d+)°/)
+    || t.match(/Cap téléphone \(capteur, en direct\) (-?\d+\.\d+)°/);
   return {
     lat: pt && Number(pt[1]), lng: pt && Number(pt[2]),
     instantMs: inst && Date.parse(inst[1]),
@@ -599,7 +604,7 @@ const tech1 = await page.textContent('#compassTech');
 for (const [quoi, motif] of [
   ['azimut', /Soleil azimut \d+\.\d+°/],
   ['élévation', /élévation -?\d+\.\d+°/],
-  ['heading', /Cap téléphone 150\.0°/],
+  ['heading', /Cap téléphone \(capteur, en direct\) 150\.0°/],
   ['delta heading→soleil', /Écart cap→Soleil -?\d+\.\d+°/],
   ['secteur', /secteur (devant|droite|gauche|derriere)/],
   ['type absolu/relatif', /Orientation absolue \(référencée au nord\)/],
@@ -684,6 +689,56 @@ await page.click('#vueFace');
 await page.fill('#statTime', '17:45');
 await page.click('#prevoir');
 await attendreRose('17:45');
+
+console.log('\n== Orientation figée ==');
+chk('le bouton de gel n’apparaît qu’une fois la boussole active',
+  await page.isVisible('#figerCap'));
+await envoyerOrientation(210, true, 'deviceorientationabsolute');   // cap 150°
+const avantGel = await rose();
+await page.click('#figerCap');
+chk('le bouton propose maintenant de reprendre le direct',
+  (await page.textContent('#figerCap')).trim() === 'Reprendre la boussole en direct',
+  await page.textContent('#figerCap'));
+chk('un bandeau annonce le gel, en toutes lettres',
+  /ORIENTATION FIGÉE à Sud-Est · 150°/.test(await page.textContent('#capFigeBandeau')),
+  (await page.textContent('#capFigeBandeau')).slice(0, 70));
+chk('le radar est visuellement marqué comme figé',
+  (await page.getAttribute('#rose', 'class') || '').includes('fige-actif'));
+chk('la ligne d’orientation dit « figée », plus « actuelle »',
+  /Orientation figée : Sud-Est · 150°/.test(await page.textContent('#headingLigne')),
+  (await page.textContent('#headingLigne')).trim());
+
+// LE POINT QUI COMPTE : le capteur continue de tourner, l'affichage ne bouge pas.
+await envoyerOrientation(90, true, 'deviceorientationabsolute');    // cap 270° = Ouest
+const pendantGel = await rose();
+chk('la rose ne suit plus le capteur',
+  pendantGel.cap === avantGel.cap && pendantGel.cap === 150,
+  `avant ${avantGel.cap}° · pendant ${pendantGel.cap}°`);
+chk('mais le bandeau montre où pointe réellement le téléphone',
+  /la boussole, elle, indique Ouest · 270°/.test(await page.textContent('#capFigeBandeau')),
+  (await page.textContent('#capFigeBandeau')).slice(-45));
+const techGel = await page.textContent('#compassTech');
+chk('le niveau 3 garde la mesure vivante',
+  /Cap téléphone \(capteur, en direct\) 270\.0°/.test(techGel),
+  (techGel.match(/Cap téléphone[^\n]*/) || ['(absent)'])[0]);
+chk('le niveau 3 garde le cap figé et sa dérive',
+  /Cap FIGÉ 150\.0°/.test(techGel) && /dérive depuis le gel 120\.0°/.test(techGel),
+  (techGel.match(/Cap FIGÉ[^\n]*/) || ['(absent)'])[0]);
+chk('le niveau 3 dit lequel des deux l’affichage emploie',
+  /Cap employé par l’affichage : 150\.0° \(figé\)/.test(techGel),
+  (techGel.match(/Cap employé[^\n]*/) || ['(absent)'])[0]);
+
+await page.click('#figerCap');
+chk('reprendre le direct rend la main au capteur',
+  (await rose()).cap === 270, String((await rose()).cap));
+chk('le bandeau disparaît', await page.isHidden('#capFigeBandeau'));
+chk('la ligne redevient « Orientation actuelle »',
+  /Orientation actuelle : Ouest · 270°/.test(await page.textContent('#headingLigne')),
+  (await page.textContent('#headingLigne')).trim());
+chk('le niveau 3 le dit aussi',
+  /Cap figé — non, la boussole est en direct/.test(await page.textContent('#compassTech')));
+// On remet le cap de référence des blocs suivants.
+await envoyerOrientation(210, true, 'deviceorientationabsolute');
 
 console.log('\n== Rose · Soleil sous l’horizon ==');
 await page.fill('#statTime', '23:30');
