@@ -1,12 +1,17 @@
 {
-  "name": "Éblouissement — anticipation solaire",
-  "short_name": "Éblouissement",
+  "name": "RADIUS — anticipation solaire",
+  "short_name": "RADIUS",
   "start_url": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#10151B",
   "theme_color": "#10151B",
   "icons": [
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
   ]
 }

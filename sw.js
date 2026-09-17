@@ -9,9 +9,14 @@
 // jamais supprimé : un index.html périmé pouvait revenir hors ligne avec
 // d'anciens seuils T, et les relevés de terrain porteraient sur autre chose
 // que ce qu'on croit avoir déployé.
-const VERSION = 'v5';
+const VERSION = 'v6';
 const CACHE = `radius-${VERSION}`;
-const FICHIERS = ['./', 'index.html', 'manifest.json', 'icon.svg'];
+/* index.html ne se suffit plus à lui-même : son script est un module qui
+   importe radius-core.mjs. Sans lui au cache, l'application ne démarre pas hors
+   ligne — et pire, la requête du module retombait sur index.html, donc sur du
+   HTML servi comme du JavaScript. */
+const FICHIERS = ['./', 'index.html', 'radius-core.mjs', 'manifest.json', 'icon.svg',
+                  'journey.html', 'journey-core.mjs'];
 
 // Tout le calcul est local une fois l'itinéraire chargé, mais sans cache
 // l'appli refusait de s'ouvrir hors réseau. Chaque fichier est mis en cache
@@ -55,7 +60,11 @@ self.addEventListener('fetch', (event) => {
         if (res.ok) { const copie = res.clone(); caches.open(CACHE).then((c) => c.put(req, copie)); }
         return res;
       })
-      .catch(() => caches.match(req).then((hit) => hit || caches.match('index.html'))));
+      // Le repli sur index.html ne vaut que pour une NAVIGATION. Le servir pour
+      // un .mjs absent rendrait du HTML là où le navigateur attend un module :
+      // l'erreur porterait alors sur une syntaxe, pas sur le fichier manquant.
+      .catch(() => caches.match(req).then((hit) => hit
+        || (req.mode === 'navigate' ? caches.match('index.html') : Response.error()))));
     return;
   }
 
