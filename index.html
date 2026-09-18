@@ -484,6 +484,7 @@ footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--edge);
    ═══════════════════════════════════════════════════════════ */
 import { R, D, EARTH, solar, dist, bearing, signedDelta,
   pointAtDistance, headingAtDistance, HEADING_HALF_WINDOW } from './radius-core.mjs';
+import { ecartsRaccrochage, raccrochageHorsBornes } from './radius-garde.mjs';
 
 
 /* ═══════════════════════════════════════════════════════════
@@ -1044,7 +1045,6 @@ function routeGoogleVersTimeline(data) {
 }
 
 const SNAP_LOG_M = 250;    // au-delà, l'écart de raccrochage mérite d'être noté
-const SNAP_MAX_M = 2000;   // au-delà, ce n'est plus du raccrochage : on refuse
 
 async function fetchRoute(a, b, departureMs) {
   const { ok, json: j } = await fetchBorne('/api/route', {
@@ -1072,10 +1072,10 @@ async function fetchRoute(a, b, departureMs) {
   // Google raccroche les points demandés au réseau routier : quelques centaines
   // de mètres sont normales, surtout hors agglomération. Des kilomètres veulent
   // dire qu'on n'analyse pas le trajet saisi — on ne continue pas là-dessus.
-  const debut = route.coords[0], fin = route.coords[route.coords.length - 1];
-  route.ecartDep = dist(a.lat, a.lng, debut[0], debut[1]);
-  route.ecartArr = dist(b.lat, b.lng, fin[0], fin[1]);
-  if (route.ecartDep > SNAP_MAX_M || route.ecartArr > SNAP_MAX_M) {
+  const ecarts = ecartsRaccrochage(a, b, route.coords);
+  route.ecartDep = ecarts.ecartDep;
+  route.ecartArr = ecarts.ecartArr;
+  if (raccrochageHorsBornes(ecarts)) {
     throw new Error('Le trajet renvoyé par Google ne part pas du départ demandé ou '
       + `n\u2019arrive pas à l\u2019arrivée demandée : ${fmtKm(route.ecartDep)} et `
       + `${fmtKm(route.ecartArr)} d\u2019écart. Analyse interrompue.`);

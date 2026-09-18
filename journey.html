@@ -8,6 +8,14 @@
 <style>
 :root{--bg:#10151B;--panel:#19202A;--panel2:#141A22;--edge:#2A3441;--ink:#ECF1F6;--muted:#8290A3;--sky:#81ADD2;--amber:#FFB43A;--ok:#5FC2A8;--bad:#FF7557;--mono:ui-monospace,SFMono-Regular,Menlo,monospace;--sans:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 var(--sans)}body{padding-bottom:max(28px,env(safe-area-inset-bottom))}.wrap{max-width:620px;margin:auto;padding:0 16px}header{padding:22px 0 15px;border-bottom:1px solid var(--edge);margin-bottom:18px}.eyebrow{font:11px/1.3 var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}h1{margin:6px 0 3px;font-size:28px;line-height:1.08}.sub{margin:0;color:var(--muted);font-size:14px}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:18px 0}.tab{border:1px solid var(--edge);background:var(--panel2);color:var(--ink);padding:12px 8px;border-radius:10px;font-weight:700}.tab.active{background:var(--sky);border-color:var(--sky);color:#081018}.card{background:var(--panel);border:1px solid var(--edge);border-radius:13px;padding:16px;margin:0 0 14px}.card h2{font-size:20px;margin:0 0 5px}.card h3{font-size:17px;margin:0 0 8px}.note{font-size:13px;color:var(--muted);margin:0}.field{margin:0 0 14px}label{display:block;font:11px/1.3 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}input,select{width:100%;background:var(--panel2);color:var(--ink);border:1px solid var(--edge);border-radius:9px;padding:12px 12px;font:16px/1.2 var(--sans);outline:none}input:focus,select:focus{border-color:var(--sky);box-shadow:0 0 0 3px #81add226}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stack{display:grid;gap:8px}.btn{width:100%;border:0;border-radius:9px;padding:13px 14px;background:var(--sky);color:#071017;font-weight:800;font-size:16px}.btn.secondary{background:transparent;color:var(--ink);border:1px solid var(--edge)}.btn.amber{background:var(--amber);color:#1C1202}.btn.small{padding:10px 12px;font-size:14px}.btn:disabled{opacity:.45}.check{display:flex;align-items:center;gap:9px;margin:4px 0 15px}.check input{width:auto}.status{font:12px/1.45 var(--mono);color:var(--muted);min-height:18px;margin:10px 0 0}.status.err{color:var(--bad)}.status.ok{color:var(--ok)}.hidden{display:none!important}.summary{display:grid;gap:9px}.summary .phase{border-left:3px solid var(--sky);background:var(--panel2);padding:12px 13px;border-radius:9px}.summary .phase.stationary{border-left-color:var(--ok)}.summary .phase.return{border-left-color:var(--amber)}.phase b{display:block;font-size:16px}.phase span{display:block;color:var(--muted);font-size:13px;margin-top:2px}.timeline{display:grid;gap:8px;margin-top:10px}.point{border-top:1px solid var(--edge);padding-top:10px;display:grid;grid-template-columns:72px 1fr;gap:10px}.time{font:14px/1.4 var(--mono);color:var(--sky)}.point p{margin:0 0 4px;font-size:14px}.metrics{font:12px/1.45 var(--mono);color:var(--muted)}.sun{color:var(--amber)}.section-title{font:11px/1.3 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:18px 0 8px}#rose{display:block;width:100%;max-width:280px;margin:2px auto;height:auto}.vues{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:0 0 10px}.vues .tab{padding:9px 6px;font-size:13px;font-weight:700}.devant{text-align:center;margin:0;font:12px/1.3 var(--mono);letter-spacing:.14em;color:var(--sky)}.fige{text-align:center;margin:0 0 8px;padding:7px 10px;border:1px dashed var(--amber);border-radius:8px;font:12px/1.35 var(--mono);color:var(--amber);background:#ffb43a0d}#rose.fige-actif{outline:2px dashed #FFB43A66;outline-offset:-3px;border-radius:10px}.rosequand{text-align:center;margin:0 0 10px}#headingLigne{margin:11px 0 3px;font:14px/1.3 var(--sans);color:var(--muted)}#heading{font:17px/1.2 var(--mono);color:var(--ink)}.live{font-size:14px;margin:0}.attrib{font:10px/1.5 var(--mono);color:var(--muted);margin:12px 0 0}.warn{border:1px solid #ffb43a55;background:#ffb43a0d;color:#eecb8e;border-radius:9px;padding:10px 12px;font-size:13px;margin:10px 0}.pill{display:inline-block;padding:3px 8px;border:1px solid var(--edge);border-radius:999px;font:10px var(--mono);color:var(--muted);margin-right:4px}.footer{font-size:12px;color:var(--muted);padding:6px 0 20px}details{border-top:1px solid var(--edge);margin-top:12px;padding-top:8px}summary{cursor:pointer;color:var(--muted);font:11px var(--mono);text-transform:uppercase;letter-spacing:.1em}pre{white-space:pre-wrap;word-break:break-word;font:11px/1.5 var(--mono);color:var(--muted)}@media(max-width:430px){.row{grid-template-columns:1fr}#heading{font:16px/1.2 var(--mono)}.point{grid-template-columns:64px 1fr}}
+/* Suggestions d'adresse — même principe que l'interface Trajet : on propose,
+   l'utilisateur choisit. */
+.suggest{list-style:none;padding:0;margin:6px 0 0;border:1px solid var(--edge);border-radius:9px;
+  overflow:hidden;background:var(--panel2)}
+.suggest li{padding:12px 13px;font-size:14px;border-bottom:1px solid var(--edge);cursor:pointer}
+.suggest li:last-child{border-bottom:none}
+.suggest li:active{background:var(--panel)}
+
 /* Navigation entre les deux interfaces — voir index.html : elles coexistent
    le temps de la validation, et journey.html n'était atteignable qu'à la main. */
 .nav-site{display:flex;gap:8px;padding:14px 0 0}
@@ -41,13 +49,17 @@
     <p class="note">RADIUS calcule chaque phase à son heure réelle. Le retour est redemandé à Google Routes, jamais inversé artificiellement.</p>
     <div class="field" style="margin-top:14px">
       <label for="origin">Départ</label>
-      <input id="origin" placeholder="Ex. Saint-Benoît, La Réunion" autocomplete="street-address">
+      <input id="origin" placeholder="Commence à taper une adresse" autocomplete="off">
+      <ul class="suggest hidden" id="sugOrigin"></ul>
       <button class="btn secondary small" id="originGps" style="margin-top:7px">Utiliser ma position</button>
     </div>
     <div class="field">
       <label for="destination">Destination</label>
-      <input id="destination" placeholder="Ex. Saint-Joseph, La Réunion" autocomplete="street-address">
+      <input id="destination" placeholder="Commence à taper une adresse" autocomplete="off">
+      <ul class="suggest hidden" id="sugDestination"></ul>
     </div>
+    <p class="note">Choisis l’adresse dans la liste : deux communes peuvent porter le même nom, et RADIUS n’en devine aucune.</p>
+    <p class="attrib">Adresses : Nominatim / OpenStreetMap contributors (ODbL).</p>
     <div class="row">
       <div class="field"><label for="date">Date</label><input id="date" type="date"></div>
       <div class="field"><label for="time">Départ</label><input id="time" type="time" step="60"></div>
@@ -146,10 +158,10 @@ import { routeSamples, stationarySamples, solar, sunRelativeLabel, compassHeadin
   echantillonsPointFixe, previsionDisponible, HORIZON_PREVISION_JOURS,
   meilleurePosition, resumeAcquisition, DUREE_ACQUISITION_MS, nombreStrict,
   secteurRelatif, libelleSecteur, pointRose, mod360,
-  angleRose, vueEffectiveRose } from './journey-core.mjs';
+  angleRose, vueEffectiveRose, refusRaccrochage } from './journey-core.mjs';
 
 const $ = (id) => document.getElementById(id);
-const state = { originPoint:null, stationaryPoint:null, stationarySamples:null, stationaryWx:null, heading:null, compassAbsolute:false, compassStarted:false, compassSource:null, vueRose:'face', abandonGps:null, capFige:null, figeA:null, statMaintenant:false, statHorizon:0, statDebutMs:NaN, lastTimelineHeading:null };
+const state = { originPoint:null, originChoisi:null, destinationChoisi:null, pointSource:null, stationaryPoint:null, stationarySamples:null, stationaryWx:null, heading:null, compassAbsolute:false, compassStarted:false, compassSource:null, vueRose:'face', abandonGps:null, capFige:null, figeA:null, statMaintenant:false, statHorizon:0, statDebutMs:NaN, lastTimelineHeading:null };
 const fmtTime = new Intl.DateTimeFormat('fr-FR',{hour:'2-digit',minute:'2-digit'});
 const fmtDate = new Intl.DateTimeFormat('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit'});
 const fmtKm = (m) => `${(Number(m||0)/1000).toFixed(Number(m||0)>=10000?0:1)} km`;
@@ -207,13 +219,76 @@ async function acquerirPosition(onProgres){
   });
 }
 
-async function geocode(text){const q=String(text||'').trim();if(!q)throw new Error('Adresse manquante.');const url=`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=fr&q=${encodeURIComponent(q)}`;const {ok,json:data}=await fetchBorne(url,{headers:{accept:'application/json'}},DELAI_GEOCODE_MS,'La recherche d’adresse');if(!ok)throw new Error('Le géocodage ne répond pas.');if(!data?.length)throw new Error(`Adresse introuvable : ${q}`);return {lat:Number(data[0].lat),lng:Number(data[0].lon),label:data[0].display_name||q}}
+/* Nominatim rendait UN résultat et Journey le prenait sans rien demander.
+   Saint-Benoît existe à La Réunion, dans l'Ain et dans le Var : l'utilisateur
+   croyait analyser un trajet, RADIUS en analysait un autre, et rien à l'écran
+   ne le disait. Même principe que l'interface Trajet : cinq résultats, une
+   liste, un choix explicite. Aucun pays n'est privilégié — RADIUS est mondial. */
+async function geocode(text){
+  const q=String(text||'').trim();
+  if(q.length<3)return [];
+  const url=`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=fr&q=${encodeURIComponent(q)}`;
+  const {ok,json:data}=await fetchBorne(url,{headers:{accept:'application/json'}},DELAI_GEOCODE_MS,'La recherche d’adresse');
+  if(!ok||!Array.isArray(data))throw new Error('La recherche d’adresse ne répond pas.');
+  return data.map((x)=>({lat:Number(x.lat),lng:Number(x.lon),label:String(x.display_name||q)}))
+    .filter((r)=>Number.isFinite(r.lat)&&Number.isFinite(r.lng));
+}
 
-async function resolveOrigin(){if(state.originPoint && $('origin').dataset.gps==='1')return state.originPoint;return geocode($('origin').value)}
+function wireSuggest(inputId,listId,cle){
+  const input=$(inputId),list=$(listId);
+  let timer=null;
+  const cacher=()=>{list.classList.add('hidden');list.innerHTML=''};
+  input.addEventListener('input',()=>{
+    // Le texte a changé : le choix précédent ne décrit plus ce qui est écrit.
+    state[cle]=null;
+    clearTimeout(timer);
+    const q=input.value.trim();
+    if(q.length<3){cacher();return}
+    // Nominatim demande au plus une requête par seconde.
+    timer=setTimeout(async()=>{
+      let res=[];
+      try{res=await geocode(q)}catch{cacher();return}
+      if(!res.length){cacher();return}
+      list.innerHTML='';
+      for(const r of res){
+        const li=document.createElement('li');
+        li.textContent=r.label;
+        li.onclick=()=>{
+          state[cle]=r;
+          input.value=r.label.split(',').slice(0,3).join(',');
+          if(cle==='originChoisi'){input.dataset.gps='0';state.originPoint=null}
+          cacher();
+        };
+        list.appendChild(li);
+      }
+      list.classList.remove('hidden');
+    },900);
+  });
+}
+wireSuggest('origin','sugOrigin','originChoisi');
+wireSuggest('destination','sugDestination','destinationChoisi');
+
+/* Rien n'est géocodé au clic sur « Calculer » : ce sont EXACTEMENT les
+   coordonnées retenues qui partent, ou rien ne part. */
+function resolveOrigin(){
+  if(state.originPoint && $('origin').dataset.gps==='1')return state.originPoint;
+  if(state.originChoisi)return state.originChoisi;
+  throw new Error('Choisis le départ dans la liste des suggestions, ou utilise ta position.');
+}
+function resolveDestination(){
+  if(state.destinationChoisi)return state.destinationChoisi;
+  throw new Error('Choisis la destination dans la liste des suggestions.');
+}
 async function route(origin,destination,departureMs){const {ok,json:data}=await fetchBorne('/api/route',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({origin,destination,departureMs})},DELAI_ROUTE_MS,'Google Routes');if(!ok)throw new Error(data?.error||'Route indisponible.');
 // Aucun repli silencieux : Google Routes est la source de vérité du trajet, et
 // si ce n'est pas lui qui a répondu, RADIUS le dit au lieu de continuer.
-if(data?.provider!=='google-routes')throw new Error(`Fournisseur inattendu « ${data?.provider??'inconnu'} ». RADIUS n’accepte que Google Routes.`);return data}
+if(data?.provider!=='google-routes')throw new Error(`Fournisseur inattendu « ${data?.provider??'inconnu'} ». RADIUS n’accepte que Google Routes.`);
+// Même contrôle que l'interface Trajet, et depuis la même fonction : Google
+// raccroche les points au réseau routier, quelques centaines de mètres sont
+// normales, des kilomètres veulent dire qu'on n'analyse pas le trajet saisi.
+const refus=refusRaccrochage(origin,destination,data);
+if(refus)throw new Error(refus);
+return data}
 async function weather(observations){const {ok,json:data}=await fetchBorne('/api/journey-weather',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({observations:observations.map(({lat,lng,passageTimeMs})=>({lat,lng,passageTimeMs}))})},DELAI_METEO_MS,'Open-Meteo');if(!ok)throw new Error(data?.error||'Météo indisponible.');return data}
 
 function weatherText(w){if(!w||w.status==='unknown')return 'Prévision indisponible';const bits=[];if(Number.isFinite(w.temperature))bits.push(`${Math.round(w.temperature)} °C`);if(Number.isFinite(w.precipitation))bits.push(`pluie ${w.precipitation.toFixed(1)} mm/1 h`);if(Number.isFinite(w.windSpeed))bits.push(`vent ${Math.round(w.windSpeed)} km/h`);if(Number.isFinite(w.windGusts))bits.push(`raf. ${Math.round(w.windGusts)} km/h`);if(Number.isFinite(w.cloudCover))bits.push(`nuages ${Math.round(w.cloudCover)} %`);return bits.join(' · ')||'Données partielles'}
@@ -225,7 +300,7 @@ function pointHtml(sample,w,headingOverride=null){const sun=solar(sample.passage
 function phaseCard(title,cls,from,to,meta){return `<div class="phase ${cls||''}"><b>${esc(title)} · ${fmtTime.format(new Date(from))} → ${fmtTime.format(new Date(to))}</b><span>${esc(meta)}</span></div>`}
 function detailCard(title,samples,wx,cls=''){return `<div class="card"><div class="section-title">${esc(cls)}</div><h2>${esc(title)}</h2><div class="timeline">${samples.map((s,i)=>pointHtml(s,wx?.[i])).join('')}</div><p class="attrib">Weather data by Open-Meteo.com (CC BY 4.0)</p></div>`}
 
-$('originGps').onclick=async()=>{setStatus($('journeyStatus'),'Recherche de la position…');try{const p=await gps();state.originPoint=p;$('origin').value=`Ma position (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})`;$('origin').dataset.gps='1';const q=qualitePosition(p.accuracy);setStatus($('journeyStatus'),`Position capturée · ${q.texte}`,q.fiable?'ok':'err')}catch(e){setStatus($('journeyStatus'),e.message,'err')}};
+$('originGps').onclick=async()=>{setStatus($('journeyStatus'),'Recherche de la position…');try{const p=await gps();state.originPoint=p;$('origin').value=`Ma position (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})`;$('origin').dataset.gps='1';state.originChoisi=null;$('sugOrigin').classList.add('hidden');const q=qualitePosition(p.accuracy);setStatus($('journeyStatus'),`Position capturée · ${q.texte}`,q.fiable?'ok':'err')}catch(e){setStatus($('journeyStatus'),e.message,'err')}};
 $('origin').addEventListener('input',()=>{if(!$('origin').value.startsWith('Ma position')){$('origin').dataset.gps='0';state.originPoint=null}});
 
 $('calculate').onclick=async()=>{
@@ -235,8 +310,8 @@ $('calculate').onclick=async()=>{
     if(!Number.isFinite(departMs))throw new Error('Date ou heure de départ invalide.');
     if(departMs<Date.now()-120000)throw new Error('Le départ est déjà passé. Choisis maintenant ou une heure future.');
     const stayMin=Number($('stay').value)||60;
-    const origin=await resolveOrigin();
-    const destination=await geocode($('destination').value);
+    const origin=resolveOrigin();
+    const destination=resolveDestination();
     setStatus($('journeyStatus'),'Google Routes calcule l’aller…');
     const outbound=await route(origin,destination,departMs);
     const arrivalMs=departMs+Number(outbound.durationSeconds||0)*1000;
@@ -337,6 +412,49 @@ function carteInstant(sample,w){
 }
 const cardinalDe=(deg)=>directionLisible(deg).split(' · ')[0];
 
+/* Situer le Soleil ne demande que latitude, longitude et heure. La rose
+   restait pourtant vide tant que « Prévoir à ce point » n'avait pas tourné :
+   c'était une dépendance d'INTERFACE, pas de calcul — elle faisait dépendre de
+   l'appel météo une géométrie qui n'en a aucun besoin, et rendait la boussole
+   inutilisable seule sur le terrain. */
+function positionUtilisable(p){
+  return !!p && Number.isFinite(nombreStrict(p.lat)) && Number.isFinite(nombreStrict(p.lng));
+}
+function afficherQualitePoint(p,prefixe){
+  // La précision n'est jamais masquée, et une position trop floue ne bloque
+  // rien : c'est en marchant qu'on découvre que le GPS dérive. On le dit.
+  //
+  // « Meilleure de 0 mesure » serait faux : une position reprise de Journey
+  // vient d'UNE mesure, pas d'aucune. On ne compte que ce qu'on a compté.
+  const n=nombreStrict(p&&p.mesures);
+  const q=(Number.isFinite(n)&&n>0)?resumeAcquisition(p,n):qualitePosition(p?p.accuracy:undefined);
+  $('gpsQualite').textContent=prefixe?`${prefixe} · ${q.texte}`:q.texte;
+  $('gpsQualite').className=q.fiable?'note':'warn';
+  $('gpsQualite').classList.remove('hidden');
+  return q;
+}
+async function assurerPointFixe(){
+  if(positionUtilisable(state.stationaryPoint))return state.stationaryPoint;
+  // Une position déjà capturée dans Journey est le même relevé GPS, fait il y a
+  // quelques secondes : la reprendre évite huit secondes d'acquisition pour
+  // rien. Elle est NOMMÉE à l'écran, jamais empruntée en douce — « position
+  // enregistrée au départ » n'est pas « position actuelle ».
+  if(positionUtilisable(state.originPoint)){
+    state.stationaryPoint=state.originPoint;state.pointSource='journey';
+    afficherQualitePoint(state.originPoint,'Position reprise du départ Journey');
+    return state.stationaryPoint;
+  }
+  $('arreterGps').classList.remove('hidden');
+  try{
+    const p=await acquerirPosition((meilleure,n)=>setStatus($('stationaryStatus'),
+      `Acquisition GPS… ${n} mesure${n>1?'s':''} · meilleure `
+      +`${Number.isFinite(nombreStrict(meilleure.accuracy))?Math.round(meilleure.accuracy)+' m':'inconnue'}`));
+    state.stationaryPoint=p;state.pointSource='gps';
+    afficherQualitePoint(p,null);
+    return p;
+  }finally{ $('arreterGps').classList.add('hidden'); }
+}
+
 async function planStationary(){
   const bouton=$('prevoir');bouton.disabled=true;
   $('meteoFenetre').classList.add('hidden');
@@ -357,13 +475,8 @@ async function planStationary(){
         `Acquisition GPS… ${n} mesure${n>1?'s':''} · meilleure `
         +`${Number.isFinite(nombreStrict(meilleure.accuracy))?Math.round(meilleure.accuracy)+' m':'inconnue'}`));
     }finally{ $('arreterGps').classList.add('hidden'); }
-    state.stationaryPoint=p;
-    // La précision n'est jamais masquée, et une position trop floue ne bloque
-    // rien : c'est en marchant qu'on découvre que le GPS dérive. On le dit.
-    const q=resumeAcquisition(p,p.mesures);
-    $('gpsQualite').textContent=q.texte;
-    $('gpsQualite').className=q.fiable?'note':'warn';
-    $('gpsQualite').classList.remove('hidden');
+    state.stationaryPoint=p;state.pointSource='gps';
+    const q=afficherQualitePoint(p,null);
 
     const samples=echantillonsPointFixe(p,debut,horizon);
     if(!samples.length)throw new Error('Impossible d’échantillonner ce point.');
@@ -435,7 +548,14 @@ function updateLiveSun(){
   const capAffiche=capCourant();
   if(Number.isFinite(nombreStrict(capAffiche)))$('heading').textContent=directionLisible(capAffiche);
   $('headingEtiq').textContent=estFige()?'Orientation figée : ':'Orientation actuelle : ';
-  if(!state.stationaryPoint){$('compassTech').textContent=orientationTech(null);dessinerRose();return}
+  if(!positionUtilisable(state.stationaryPoint)){
+    // Pas de faux Soleil : sans lieu, il n'y a pas de position solaire, et un
+    // marqueur dessiné « quand même » serait une invention.
+    $('liveSun').textContent='Soleil non situé';
+    $('liveSunNote').textContent='Aucune position capturée. Le Soleil se calcule '
+      +'à partir d’un lieu et d’une heure — la boussole, elle, continue de fonctionner.';
+    $('compassTech').textContent=orientationTech(null);dessinerRose();return;
+  }
   // La phrase décrit LE MÊME instant que la rose, sinon l'écran se contredit :
   // une rose qui montre un Soleil couché au-dessus d'un « Soleil à droite » se
   // lit comme une panne. L'orientation, elle, reste celle de maintenant — c'est
@@ -652,7 +772,7 @@ function dessinerRose(){
     ?(Number.isFinite(state.statDebutMs)
       ?`Soleil au ${fmtDate.format(new Date(t))} à ${fmtTime.format(new Date(t))} · ${repere}`
       :`Soleil maintenant · ${fmtTime.format(new Date(t))} · ${repere}`)
-    :'Position non capturée — appuie sur « Prévoir à ce point ».';
+    :'Position non capturée — active la boussole, ou lance « Prévoir à ce point ».';
 }
 
 function basculerVue(v){
@@ -710,6 +830,9 @@ function orientationTech(sun){
   }
   const p=state.stationaryPoint;
   if(p){
+    l.push(`Origine du point : ${ {gps:'acquisition GPS du mode Point fixe',
+      journey:'position capturée dans Journey, reprise telle quelle'}[state.pointSource]
+      || 'inconnue' }`);
     l.push(`Point ${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`
       + ` · précision ${Number.isFinite(p.accuracy)?Math.round(p.accuracy)+' m':'inconnue'}`
       + ` · seuil relevé fiable ${PRECISION_TERRAIN_M} m`);
@@ -733,7 +856,31 @@ function onOrientation(e){
   if(state.stationarySamples&&Number.isFinite(nombreStrict(c))
     &&(!Number.isFinite(state.lastTimelineHeading)
       ||Math.abs(signedDelta(state.lastTimelineHeading,c))>=5))renderStationaryTimeline()}
-async function startCompass(){try{if(typeof DeviceOrientationEvent==='undefined')throw new Error('Capteur d’orientation non disponible dans ce navigateur.');if(typeof DeviceOrientationEvent.requestPermission==='function'){const permission=await DeviceOrientationEvent.requestPermission();if(permission!=='granted')throw new Error('Permission de boussole refusée.')}window.addEventListener('deviceorientationabsolute',onOrientation,true);window.addEventListener('deviceorientation',onOrientation,true);state.compassStarted=true;$('liveCard').classList.remove('hidden');majBandeauFige();setStatus($('stationaryStatus'),'Boussole activée. Oriente le haut du téléphone vers la direction regardée.','ok')}catch(e){setStatus($('stationaryStatus'),e.message,'err')}}
+/* Le cap et la position sont DEUX mesures indépendantes : l'une peut manquer
+   sans emporter l'autre. Activer la boussole obtient donc les deux, et l'écran
+   dit séparément ce qui a marché — sans jamais appeler Open-Meteo, qui n'a
+   rien à voir avec la position du Soleil. */
+async function startCompass(){
+  $('liveCard').classList.remove('hidden');
+  let capteurKo=null;
+  try{
+    if(typeof DeviceOrientationEvent==='undefined')throw new Error('Capteur d’orientation non disponible dans ce navigateur.');
+    if(typeof DeviceOrientationEvent.requestPermission==='function'){
+      const permission=await DeviceOrientationEvent.requestPermission();
+      if(permission!=='granted')throw new Error('Permission de boussole refusée.');
+    }
+    window.addEventListener('deviceorientationabsolute',onOrientation,true);
+    window.addEventListener('deviceorientation',onOrientation,true);
+    state.compassStarted=true;
+    majBandeauFige();
+  }catch(e){ capteurKo=e?.message||String(e); }
+  let pointKo=null;
+  try{ await assurerPointFixe(); }catch(e){ pointKo=e?.message||String(e); }
+  updateLiveSun();
+  const dits=[capteurKo||'Boussole activée. Oriente le haut du téléphone vers la direction regardée.'];
+  if(pointKo)dits.push(`Soleil non situé, faute de localisation : ${pointKo}`);
+  setStatus($('stationaryStatus'),dits.join(' '),(capteurKo||pointKo)?'err':'ok');
+}
 $('compassBtn').onclick=startCompass;
 
 initClock();

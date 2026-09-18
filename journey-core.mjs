@@ -11,6 +11,25 @@ import { R, D, EARTH, mod360, solar, dist, bearing, signedDelta,
 /** Nom historique de `dist()` dans ce module. Même fonction, même résultat. */
 export const haversine = dist;
 
+/* Le contrôle de raccrochage vient du même endroit que celui d'index.html.
+   Journey ne le faisait pas du tout : il lisait la réponse /api/route
+   directement, et un itinéraire raccroché à des kilomètres y passait en
+   silence. Réexporté ici pour que journey.html importe d'un seul endroit. */
+export { SNAP_MAX_M, ecartsRaccrochage, raccrochageHorsBornes } from './radius-garde.mjs';
+import { ecartsRaccrochage, raccrochageHorsBornes } from './radius-garde.mjs';
+
+/* La géométrie d'une réponse Google, telle que /api/route la rend : une
+   LineString [[lat,lng], …]. Sans elle, il n'y a rien à contrôler — et ce n'est
+   pas au contrôle de raccrochage de signaler une réponse sans tracé. */
+export function refusRaccrochage(depart, arrivee, data) {
+  const ecarts = ecartsRaccrochage(depart, arrivee, data?.geometry);
+  if (!raccrochageHorsBornes(ecarts)) return null;
+  const km = (m) => (m >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m');
+  return 'Le trajet renvoyé par Google ne part pas du départ demandé ou n’arrive pas '
+    + `à l’arrivée demandée : ${km(ecarts.ecartDep)} et ${km(ecarts.ecartArr)} d’écart. `
+    + 'Calcul interrompu.';
+}
+
 /* Position ET cap à une distance curviligne, délégués au moteur.
    Ce fichier portait sa propre interpolation — une TROISIÈME copie — et rendait
    le cap de la corde du sous-segment. Le moteur, lui, lit le cap sur une

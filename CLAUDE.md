@@ -658,13 +658,80 @@ Le banc `test-journey-navigateur.mjs` sert désormais `index.html` à la racine,
 comme Vercel, et fait l'aller-retour réel entre les deux pages : un lien présent
 dans le HTML ne prouve pas qu'il mène quelque part.
 
-**Un défaut du banc, constaté ce jour-là et laissé ouvert :**
-`test-journey-navigateur.mjs` n'est pas déterministe sous charge. Deux exécutions
-simultanées suffisent à faire dépasser les 45 s d'attente de « Sortie calculée »,
-et trois contrôles de la sortie complète échouent alors sans qu'aucun code n'ait
-changé — vérifié en rejouant le banc sur le commit précédent, qui échoue aux
-mêmes trois. Le relâchement de l'échéance masquerait le symptôme sans rien
-mesurer : le banc se lance seul, et son résultat ne vaut que dans ces conditions.
+**Un défaut du banc, constaté ce jour-là — cause trouvée le lendemain.**
+Trois contrôles de la sortie complète échouaient par intermittence, sans qu'aucun
+code n'ait changé. La charge avait d'abord été soupçonnée : c'était faux.
+L'attente de `calculer()` cherchait un statut commençant par « Sortie calculée »,
+« Google Routes », « Route »… — or **« Google Routes calcule l'aller… » commence
+par « Google Routes »**. Elle se résolvait donc en 69 ms, mesurés, pendant que le
+retour tournait encore, et les contrôles suivants lisaient un écran à moitié
+rempli. Elle attend désormais un **état final** — la réactivation de `#calculate`,
+posée dans son `finally`, le seul signal qui dise que la chaîne est terminée,
+succès ou panne. C'est le même défaut que `#instantBloc:not(.hidden)` : une
+attente qui se résout tout de suite ne mesure rien, et elle est pire qu'absente
+puisqu'elle rassure.
+
+## Deux relevés du Galaxy A55 — la boussole seule, et l'homonyme
+
+Décisions du 18 septembre 2026, prises sur deux défauts constatés sur le
+téléphone. Aucune ne touche au moteur scientifique, à `api/route.js`, aux seuils
+ni à l'interface Trajet.
+
+**Situer le Soleil ne demande qu'un lieu et une heure.** La rose restait vide
+tant que « Prévoir à ce point » n'avait pas tourné, parce que `dessinerRose()`
+lit `state.stationaryPoint` et que seul ce bouton le remplissait. C'était une
+dépendance d'**interface**, pas de calcul : elle faisait dépendre d'un appel
+Open-Meteo une géométrie qui n'en a aucun besoin, et rendait la boussole
+inutilisable seule sur le terrain — précisément l'usage pour lequel elle existe.
+
+« Activer la boussole » obtient donc désormais une position, dans cet ordre :
+celle du point fixe si elle existe, sinon **celle déjà capturée dans Journey**,
+sinon l'acquisition GPS courte déjà implémentée. Aucune requête météo n'est
+émise pour cela, et aucun appel à Google Routes : le point fixe est fixe.
+
+**Le cap et la position sont deux mesures indépendantes.** L'une peut manquer
+sans emporter l'autre : sans capteur, la boussole le dit et la position reste
+acquise ; sans position, la boussole continue de tourner et l'écran annonce
+**« Soleil non situé »** avec sa raison. Aucun marqueur n'est dessiné dans ce
+cas — un Soleil placé « quand même » serait une invention, exactement comme un
+cap de 0° né d'un `alpha` nul.
+
+**Une position reprise est nommée.** « Position reprise du départ Journey »
+s'affiche à côté de sa précision, et le niveau 3 porte l'origine du point —
+acquisition du mode Point fixe, ou reprise de Journey. C'est la même règle que
+« Position enregistrée au départ » : un point emprunté en silence serait pris
+pour une mesure fraîche.
+
+**Journey ne choisit plus d'adresse à la place de l'utilisateur.** Il
+interrogeait Nominatim en `limit=1` et employait `data[0]` sans rien demander.
+Saint-Benoît existe à La Réunion, dans l'Ain et dans le Var : l'utilisateur
+croyait analyser un trajet, RADIUS en analysait un autre, et **rien à l'écran ne
+le disait**. Il suit maintenant le principe de l'interface Trajet — cinq
+résultats, une liste, un choix explicite, les coordonnées du résultat retenu
+conservées dans l'état.
+
+Rien n'est géocodé au clic sur « Calculer toute la sortie » : ce sont
+exactement les coordonnées choisies qui partent, ou **rien ne part** et l'écran
+demande de sélectionner l'adresse. Taper du texte n'est pas choisir un lieu.
+
+Aucun pays n'est privilégié, aucun `countrycodes`, aucun biais de vue : La
+Réunion est le terrain d'essai, pas le marché, et RADIUS reste mondial.
+
+**Le contrôle de raccrochage est commun aux deux interfaces.** Le manque laissé
+ouvert le 17 septembre est comblé : `radius-garde.mjs` porte `SNAP_MAX_M` et le
+calcul des écarts, `index.html` et `journey.html` l'appellent, et aucun des deux
+n'en garde de copie. Il vit à part de `radius-core.mjs`, qui ne porte **aucun
+seuil** : celui-ci qualifie une *réponse* de Google, jamais le ciel — il ne lit
+pas `T`, ne produit aucun `level` et ne s'y mélange jamais. Toujours aucun repli
+OSRM, et jamais.
+
+**Le trafic n'a pas été réécrit, il a été éprouvé.** `/api/route` rend déjà
+`durationSeconds`, `staticDurationSeconds`, `trafficFactor` et `trafficBasis` ;
+les bancs vérifient désormais que l'arrivée de l'aller suit l'ETA trafic et non
+la durée statique, que le séjour démarre à cette arrivée-là, que les instants de
+passage reculent **exactement** du facteur sans qu'aucun point ne bouge d'un
+mètre, qu'un facteur nul ou absent est ignoré, et que le retour est une seconde
+requête Google à son heure réelle.
 
 ## La règle de parole
 

@@ -9,14 +9,14 @@
 // jamais supprimé : un index.html périmé pouvait revenir hors ligne avec
 // d'anciens seuils T, et les relevés de terrain porteraient sur autre chose
 // que ce qu'on croit avoir déployé.
-const VERSION = 'v7';
+const VERSION = 'v8';
 const CACHE = `radius-${VERSION}`;
 /* index.html ne se suffit plus à lui-même : son script est un module qui
    importe radius-core.mjs. Sans lui au cache, l'application ne démarre pas hors
    ligne — et pire, la requête du module retombait sur index.html, donc sur du
    HTML servi comme du JavaScript. */
-const FICHIERS = ['./', 'index.html', 'radius-core.mjs', 'manifest.json', 'icon.svg',
-                  'journey.html', 'journey-core.mjs'];
+const FICHIERS = ['./', 'index.html', 'radius-core.mjs', 'radius-garde.mjs',
+                  'manifest.json', 'icon.svg', 'journey.html', 'journey-core.mjs'];
 
 // Tout le calcul est local une fois l'itinéraire chargé, mais sans cache
 // l'appli refusait de s'ouvrir hors réseau. Chaque fichier est mis en cache

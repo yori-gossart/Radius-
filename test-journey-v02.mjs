@@ -8,6 +8,7 @@ import {
   pointRose, ROSE_CENTRE, mod360, angleRose, vueEffectiveRose, VUES_ROSE,
   meilleurePosition, resumeAcquisition, DUREE_ACQUISITION_MS, nombreStrict,
   HEADING_HALF_WINDOW, pointAtDistance as pointMoteur, headingAtDistance,
+  SNAP_MAX_M, refusRaccrochage,
 } from './journey-core.mjs';
 
 const near = (a,b,t=1e-6) => Math.abs(a-b) <= t;
@@ -742,6 +743,75 @@ assert.equal(typeof headingAtDistance, 'function', 'journey a accès au cap loca
     geometry: droit, steps: [{ staticDurationSeconds: 600, coordinates: droit }] };
   assert.ok(routeSamples(r2, 0, 5).every((x) => near(x.heading, 90, 0.01)),
     'sur une ligne droite, la fenêtre rend exactement le cap');
+}
+
+/* ---------- le raccrochage Google, contrôlé comme dans index.html ----------
+   Journey lisait la réponse /api/route directement : un itinéraire raccroché à
+   des kilomètres du départ demandé y passait en silence. Le contrôle vient
+   maintenant de radius-garde.mjs, la MÊME fonction que celle d'index.html. */
+{
+  const A = { lat: -20.88, lng: 55.45 }, B = { lat: -21.17, lng: 55.29 };
+  assert.equal(SNAP_MAX_M, 2000, 'la borne de raccrochage est inchangée');
+  assert.equal(refusRaccrochage(A, B, { geometry: [[A.lat, A.lng], [B.lat, B.lng]] }), null,
+    'un itinéraire qui part du bon endroit passe');
+  // ~1500 m de raccrochage : anormal en ville, banal en campagne. On accepte.
+  const proche = [[A.lat + 0.0135, A.lng], [B.lat, B.lng]];
+  assert.equal(refusRaccrochage(A, B, { geometry: proche }), null,
+    'quelques centaines de mètres restent du raccrochage');
+  // ~5,5 km : ce n'est plus le trajet demandé.
+  const loin = [[A.lat + 0.05, A.lng], [B.lat, B.lng]];
+  const dit = refusRaccrochage(A, B, { geometry: loin });
+  assert.ok(typeof dit === 'string' && /ne part pas du départ demandé/.test(dit),
+    'un départ à des kilomètres est refusé, et dit');
+  assert.ok(/km/.test(dit), 'le refus nomme l’écart');
+  const arrivee = refusRaccrochage(A, B, { geometry: [[A.lat, A.lng], [B.lat + 0.05, B.lng]] });
+  assert.ok(typeof arrivee === 'string', 'l’arrivée est contrôlée aussi');
+  // Une réponse sans tracé n'est pas un dépassement de raccrochage : ce n'est
+  // pas à ce contrôle-ci de la signaler, et prétendre le contraire donnerait un
+  // message faux sur la cause.
+  assert.equal(refusRaccrochage(A, B, {}), null, 'aucune géométrie : pas un refus de raccrochage');
+  assert.equal(refusRaccrochage(A, B, { geometry: [[A.lat, A.lng]] }), null,
+    'un seul point : rien à contrôler');
+}
+
+/* ---------- le trafic entre comme horloge ----------
+   /api/route rend durationSeconds (ETA trafic), staticDurationSeconds et
+   trafficFactor. Les instants de passage suivent le profil STATIQUE multiplié
+   par le facteur : un trajet ralenti de 25 % voit chacun de ses instants
+   reculer d'autant, sans qu'aucune géométrie ne bouge. */
+{
+  const geom = [[-20.88, 55.45], [-21.00, 55.38], [-21.17, 55.29]];
+  const etapes = [
+    { staticDurationSeconds: 600, coordinates: [geom[0], geom[1]] },
+    { staticDurationSeconds: 600, coordinates: [geom[1], geom[2]] },
+  ];
+  const faire = (facteur) => ({
+    staticDurationSeconds: 1200, durationSeconds: 1200 * facteur,
+    trafficFactor: facteur, geometry: geom, steps: etapes,
+  });
+  const fluide = routeSamples(faire(1), 0, 5);
+  const charge = routeSamples(faire(1.25), 0, 5);
+  assert.equal(fluide.length, 5); assert.equal(charge.length, 5);
+  assert.ok(near(fluide.at(-1).passageTimeMs, 1200 * 1000, 1),
+    'sans trafic, le dernier instant est la durée statique');
+  assert.ok(near(charge.at(-1).passageTimeMs, 1500 * 1000, 1),
+    'avec trafficFactor 1,25, il recule de 25 %');
+  for (let i = 1; i < 5; i++) {
+    assert.ok(charge[i].passageTimeMs > fluide[i].passageTimeMs,
+      `l’instant ${i} recule vraiment`);
+    assert.ok(near(charge[i].passageTimeMs / fluide[i].passageTimeMs, 1.25, 1e-9),
+      `l’instant ${i} recule EXACTEMENT du facteur`);
+  }
+  // La géométrie, elle, ne bouge pas d'un mètre : le trafic est une horloge,
+  // pas un contenu.
+  for (let i = 0; i < 5; i++) {
+    assert.ok(near(charge[i].lat, fluide[i].lat, 1e-12)
+      && near(charge[i].lng, fluide[i].lng, 1e-12),
+      `le point ${i} est au même endroit`);
+  }
+  // Un facteur absent ou absurde ne ralentit ni n'accélère rien.
+  assert.ok(near(routeSamples({ ...faire(1), trafficFactor: 0 }, 0, 5).at(-1).passageTimeMs,
+    1200 * 1000, 1), 'un facteur nul est ignoré, jamais appliqué');
 }
 
 console.log('RADIUS V0.2 Journey + Stationary — Soleil aligné sur index.html, échéances et règles figées OK');

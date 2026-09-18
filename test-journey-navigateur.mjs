@@ -26,6 +26,12 @@ const noyau = await import(new URL('./journey-core.mjs', import.meta.url).href);
 
 const A = { lat: -20.88, lng: 55.45, label: 'Saint-Benoît, La Réunion' };
 const B = { lat: -21.17, lng: 55.29, label: 'Saint-Leu, La Réunion' };
+/* Saint-Benoît existe à La Réunion, dans l'Ain et dans le Var. Le géocodeur du
+   banc rend donc DEUX résultats, l'homonyme métropolitain EN PREMIER : si
+   Journey retombait sur `data[0]`, il analyserait l'Ain en croyant analyser La
+   Réunion, et aucun contrôle portant sur un seul résultat ne le verrait. */
+const LEURRE_A = { lat: 46.0333, lng: 5.3000, label: 'Saint-Benoît, Ain, France' };
+const LEURRE_B = { lat: 43.5100, lng: 6.6600, label: 'Saint-Leu, Var, France' };
 const GEOM_AB = [[A.lat, A.lng], [B.lat, B.lng]];
 const GEOM_BA = [[B.lat, B.lng], [-21.02, 55.40], [A.lat, A.lng]];
 
@@ -149,20 +155,46 @@ await page.addInitScript(() => { window.__precisionGps = 12; });
 const erreursJS = [];
 page.on('pageerror', (e) => erreursJS.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error') erreursJS.push('console: ' + m.text()); });
-await page.route('**/nominatim.openstreetmap.org/**', (r) => {
+const ligneNominatim = (x) => ({ display_name: x.label, lat: String(x.lat), lon: String(x.lng) });
+const monterGeocodeur = (cible) => cible.route('**/nominatim.openstreetmap.org/**', (r) => {
   const q = decodeURIComponent(new URL(r.request().url()).searchParams.get('q') || '');
-  const p = /benoit|benoît/i.test(q) ? A : B;
+  const [leurre, vrai] = /benoit|benoît/i.test(q) ? [LEURRE_A, A] : [LEURRE_B, B];
   r.fulfill({ status: 200, contentType: 'application/json',
-    body: JSON.stringify([{ display_name: p.label, lat: String(p.lat), lon: String(p.lng) }]) });
+    body: JSON.stringify([leurre, vrai].map(ligneNominatim)) });
 });
+await monterGeocodeur(page);
+
+/* Choisir une adresse, c'est ce que fait un humain : taper, attendre la liste,
+   cliquer la bonne ligne. Un banc qui remplirait le champ et cliquerait
+   « Calculer » ne prouverait rien de ce contrôle-ci. */
+async function choisirAdresse(cible, champ, liste, motif) {
+  await cible.fill(champ, motif);
+  await cible.waitForSelector(`${liste}:not(.hidden) li`, { timeout: 20000 });
+  await cible.click(`${liste} li:has-text("${motif.split(',')[1].trim()}")`);
+}
+async function remplirSortie(cible) {
+  await choisirAdresse(cible, '#origin', '#sugOrigin', 'Saint-Benoît, La Réunion');
+  await choisirAdresse(cible, '#destination', '#sugDestination', 'Saint-Leu, La Réunion');
+}
 
 const statutJourney = () => page.textContent('#journeyStatus');
+/* Attendre un ÉTAT FINAL, jamais un message de passage.
+   L'ancienne attente cherchait un statut commençant par « Sortie calculée »,
+   « Google Routes », « Route »… — or « Google Routes calcule l'aller… »
+   commence par « Google Routes ». Elle se résolvait donc en 69 ms, mesurés,
+   pendant que le retour tournait encore : les trois contrôles suivants
+   lisaient un écran à moitié rempli, et échouaient une fois sur deux sans
+   qu'aucun code n'ait changé. C'est exactement le défaut déjà corrigé sur
+   `#instantBloc:not(.hidden)` — une attente qui se résout tout de suite ne
+   mesure rien, et elle est pire qu'absente puisqu'elle rassure.
+
+   `#calculate` est réactivé dans le `finally` de son gestionnaire : c'est le
+   seul signal qui dise que la chaîne est terminée, succès ou panne. */
 async function calculer() {
   await page.click('#calculate');
-  await page.waitForFunction(() => {
-    const s = document.getElementById('journeyStatus');
-    return /^(Sortie calculée|Le départ|Adresse|Google Routes|Route|La recherche)/.test(s.textContent || '');
-  }, null, { timeout: 45000 }).catch(() => {});
+  await page.waitForFunction(
+    () => !document.getElementById('calculate').disabled,
+    null, { timeout: 60000 }).catch(() => {});
 }
 
 console.log('\n== La page se charge et le module ESM s’exécute ==');
@@ -178,8 +210,7 @@ chk('l’heure de départ est pré-remplie',
   `${await page.inputValue('#date')} ${await page.inputValue('#time')}`);
 
 console.log('\n== Une sortie complète : aller → séjour → retour ==');
-await page.fill('#origin', 'Saint-Benoît, La Réunion');
-await page.fill('#destination', 'Saint-Leu, La Réunion');
+await remplirSortie(page);
 await page.fill('#date', '2026-12-21'); await page.fill('#time', '16:10');
 await page.selectOption('#stay', '120');
 await calculer();
@@ -203,6 +234,40 @@ chk('le retour part APRÈS l’arrivée plus le séjour, jamais à l’heure de 
     ? `${Math.round((routesDemandees[1].corps.departureMs - routesDemandees[0].corps.departureMs) / 60000)} min d’écart`
     : '');
 
+/* Ce sont les coordonnées CHOISIES qui partent, pas celles d'un homonyme. Le
+   géocodeur du banc rend l'Ain en premier : si Journey prenait `data[0]`, ces
+   deux contrôles tomberaient, et eux seuls. */
+chk('ce sont les coordonnées sélectionnées qui partent à Google — départ',
+  routesDemandees.length === 2
+  && Math.abs(routesDemandees[0].corps.origin.lat - A.lat) < 1e-9
+  && Math.abs(routesDemandees[0].corps.origin.lng - A.lng) < 1e-9,
+  routesDemandees.length ? JSON.stringify(routesDemandees[0].corps.origin) : '');
+chk('… et arrivée, jamais l’homonyme métropolitain',
+  routesDemandees.length === 2
+  && Math.abs(routesDemandees[0].corps.destination.lat - B.lat) < 1e-9
+  && Math.abs(routesDemandees[0].corps.destination.lat - LEURRE_B.lat) > 1,
+  routesDemandees.length ? JSON.stringify(routesDemandees[0].corps.destination) : '');
+
+/* Le trafic entre comme HORLOGE. L'arrivée suit durationSeconds — l'ETA trafic
+   — et non staticDurationSeconds ; les instants de passage suivent le profil
+   statique multiplié par trafficFactor. Le banc rend 1,1 : sans lui, le séjour
+   commencerait 10 % trop tôt et personne ne le verrait. */
+const attenduAller = reponseRoute(GEOM_AB);
+const dureeAllerMs = attenduAller.durationSeconds * 1000;
+const phaseTextes = await page.$$eval('.phase b', (n) => n.map((x) => x.textContent.trim()));
+const enMinutes = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+const bornes = phaseTextes.map((t) => (t.match(/(\d{2}:\d{2}) → (\d{2}:\d{2})/) || []).slice(1));
+chk('l’arrivée de l’aller suit durationSeconds, pas la durée statique',
+  bornes[0] && Math.abs(
+    enMinutes(bornes[0][1]) - (enMinutes(bornes[0][0]) + dureeAllerMs / 60000)) <= 1,
+  bornes[0] ? `${bornes[0][0]} → ${bornes[0][1]} pour ${(dureeAllerMs / 60000).toFixed(1)} min`
+    : '(aucune phase)');
+chk('le séjour démarre à cette arrivée-là, trafic compris',
+  bornes[0] && bornes[1] && bornes[0][1] === bornes[1][0],
+  bornes[1] ? bornes[1].join(' → ') : '');
+chk('trafficFactor vaut bien autre chose que 1 dans ce scénario',
+  Math.abs(attenduAller.trafficFactor - 1) > 0.05, String(attenduAller.trafficFactor));
+
 const heures = await page.$$eval('.point .time', (n) => n.map((x) => x.textContent.trim()));
 chk('chaque phase a ses propres instants', heures.length >= 12, `${heures.length} échantillons`);
 const croissant = heures.every((h, i) => i === 0 || h >= heures[i - 1] || true);
@@ -223,8 +288,7 @@ chk('l’avertissement « météo descriptive » est affiché',
 console.log('\n== La météo est passive : sa panne ne coûte pas le trajet ==');
 muet.weather = true;
 await page.goto(base + '/journey.html');
-await page.fill('#origin', 'Saint-Benoît, La Réunion');
-await page.fill('#destination', 'Saint-Leu, La Réunion');
+await remplirSortie(page);
 await page.fill('#date', '2026-12-21'); await page.fill('#time', '16:10');
 await page.click('#calculate');
 await page.waitForFunction(() => /sans la météo/.test(
@@ -244,8 +308,7 @@ chk('aucune valeur météo inventée',
 console.log('\n== Google Routes muet : une échéance, jamais un figeage ==');
 muet.route = true;
 await page.goto(base + '/journey.html');
-await page.fill('#origin', 'Saint-Benoît, La Réunion');
-await page.fill('#destination', 'Saint-Leu, La Réunion');
+await remplirSortie(page);
 await page.fill('#date', '2026-12-21'); await page.fill('#time', '16:10');
 await page.click('#calculate');
 await page.waitForFunction(() => /n.a pas répondu/.test(
@@ -839,6 +902,110 @@ chk('mais l’élévation négative reste lisible au niveau 3',
   /élévation -\d+\.\d+°/.test(await nuit.textContent('#compassTech')),
   (( await nuit.textContent('#compassTech')).match(/Soleil azimut[^\n]*/) || ['(absent)'])[0]);
 await nuit.close();
+
+console.log('\n== Aucune adresse n’est choisie en douce ==');
+await page.goto(base + '/journey.html');
+const avantSansChoix = journal.filter((j) => j.chemin === '/api/route').length;
+await page.fill('#origin', 'Saint-Benoît');
+await page.waitForSelector('#sugOrigin:not(.hidden) li', { timeout: 20000 });
+const propositions = await page.$$eval('#sugOrigin li', (n) => n.map((x) => x.textContent.trim()));
+chk('les homonymes sont proposés, pas tranchés', propositions.length === 2,
+  propositions.join(' | '));
+chk('l’homonyme métropolitain est bien le premier rendu par le géocodeur',
+  /Ain/.test(propositions[0] || ''), propositions[0]);
+await page.fill('#destination', 'Saint-Leu');
+await page.fill('#date', '2026-12-21'); await page.fill('#time', '16:10');
+await page.click('#calculate');
+await page.waitForFunction(() => /liste des suggestions/.test(
+  document.getElementById('journeyStatus').textContent || ''), null, { timeout: 15000 }).catch(() => {});
+const refusChoix = await statutJourney();
+chk('sans sélection, Journey demande de choisir au lieu de deviner',
+  /liste des suggestions/.test(refusChoix), refusChoix.slice(0, 110));
+chk('et n’a envoyé aucune requête à Google',
+  journal.filter((j) => j.chemin === '/api/route').length === avantSansChoix,
+  `${journal.filter((j) => j.chemin === '/api/route').length - avantSansChoix} requête(s) de trop`);
+chk('le bouton reste utilisable', !(await page.isDisabled('#calculate')));
+
+console.log('\n== La boussole situe le Soleil sans passer par la météo ==');
+await page.goto(base + '/journey.html');
+await page.evaluate(() => { window.__precisionGps = 12; });
+await page.click('#tabStationary');
+const avantMeteoFixe = journal.filter((j) => j.chemin === '/api/journey-weather').length;
+chk('avant toute capture, aucun Soleil n’est dessiné',
+  (await page.$$eval('#rose #roseSoleil', (n) => n.length)) === 0);
+await page.click('#compassBtn');
+/* `#gpsQualite` n'est rempli qu'à la fin de l'acquisition : c'est le seul
+   signal qui dit qu'une position existe vraiment. */
+await page.waitForSelector('#gpsQualite:not(.hidden)', { timeout: 40000 }).catch(() => {});
+chk('« Activer la boussole » suffit à placer le Soleil sur la rose',
+  (await page.$$eval('#rose #roseSoleil', (n) => n.length)) === 1,
+  await page.textContent('#roseQuand'));
+chk('sans avoir lancé « Prévoir à ce point »',
+  await page.evaluate(() => document.getElementById('stationaryForecast').classList.contains('hidden')));
+chk('et sans une seule requête météo',
+  journal.filter((j) => j.chemin === '/api/journey-weather').length === avantMeteoFixe,
+  'situer le Soleil ne demande qu’un lieu et une heure');
+chk('aucun appel Google Routes non plus : le point fixe est fixe',
+  journal.filter((j) => j.chemin === '/api/route').length === avantSansChoix);
+const azimutRose = await page.getAttribute('#rose #roseSoleil', 'data-azimut');
+chk('le marqueur porte un azimut réel', Number.isFinite(Number(azimutRose)), azimutRose);
+
+console.log('\n== Sans position, pas de faux Soleil ==');
+const sansGps = await ctx.newPage();
+await sansGps.addInitScript(() => {
+  const refus = (ok, ko) => { if (ko) ko({ code: 1, message: 'refusé par le banc' }); };
+  navigator.geolocation.getCurrentPosition = refus;
+  navigator.geolocation.watchPosition = (ok, ko) => { refus(ok, ko); return 0; };
+  navigator.geolocation.clearWatch = () => {};
+});
+await sansGps.goto(base + '/journey.html');
+await sansGps.click('#tabStationary');
+await sansGps.click('#compassBtn');
+await sansGps.waitForFunction(() => /Soleil non situé/.test(
+  document.getElementById('stationaryStatus').textContent || ''), null, { timeout: 30000 }).catch(() => {});
+chk('aucun Soleil n’est dessiné sans position',
+  (await sansGps.$$eval('#rose #roseSoleil', (n) => n.length)) === 0);
+chk('l’écran dit pourquoi, au lieu de rester muet',
+  /Soleil non situé/.test(await sansGps.textContent('#stationaryStatus')),
+  (await sansGps.textContent('#stationaryStatus')).slice(0, 120));
+chk('le niveau 1 le dit aussi',
+  (await sansGps.textContent('#liveSun')).trim() === 'Soleil non situé',
+  await sansGps.textContent('#liveSun'));
+chk('la boussole, elle, continue de fonctionner',
+  /continue de fonctionner/.test(await sansGps.textContent('#liveSunNote')),
+  await sansGps.textContent('#liveSunNote'));
+chk('la rose reste affichée plutôt que de disparaître', await sansGps.isVisible('#rose'));
+await sansGps.close();
+
+console.log('\n== Une position déjà capturée dans Journey alimente le Point fixe ==');
+const reprise = await ctx.newPage();
+await reprise.addInitScript(() => { window.__precisionGps = 18; });
+await monterGeocodeur(reprise);
+await reprise.goto(base + '/journey.html');
+await reprise.click('#originGps');
+await reprise.waitForFunction(() => /Position capturée/.test(
+  document.getElementById('journeyStatus').textContent || ''), null, { timeout: 30000 }).catch(() => {});
+chk('Journey capture bien une position',
+  /Position capturée/.test(await reprise.textContent('#journeyStatus')),
+  (await reprise.textContent('#journeyStatus')).slice(0, 80));
+await reprise.click('#tabStationary');
+await reprise.click('#compassBtn');
+await reprise.waitForSelector('#gpsQualite:not(.hidden)', { timeout: 30000 }).catch(() => {});
+chk('le Point fixe la reprend au lieu de réacquérir',
+  /reprise du départ Journey/.test(await reprise.textContent('#gpsQualite')),
+  await reprise.textContent('#gpsQualite'));
+/* Une position reprise vient d'UNE mesure, pas d'aucune : « Meilleure de
+   0 mesure » se lirait comme « aucune donnée », et ce serait faux. */
+chk('et n’invente aucun compte de mesures',
+  !/0 mesure/.test(await reprise.textContent('#gpsQualite'))
+  && /Précision GPS/.test(await reprise.textContent('#gpsQualite')),
+  await reprise.textContent('#gpsQualite'));
+chk('la reprise est NOMMÉE, jamais empruntée en douce',
+  /reprise telle quelle/.test(await reprise.textContent('#compassTech')),
+  (await reprise.textContent('#compassTech')).split('\n').find((l) => /Origine du point/.test(l)));
+chk('et le Soleil est situé dans la foulée',
+  (await reprise.$$eval('#rose #roseSoleil', (n) => n.length)) === 1);
+await reprise.close();
 
 /* ---------- la navigation entre les deux interfaces ----------
    Elles coexistent le temps de la validation. Un lien présent dans le HTML ne
